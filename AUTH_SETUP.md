@@ -54,3 +54,9 @@ Account sessions and identities are separate from Driver/Employee HR records. Th
 Run backend `mvn test` and frontend `npm test` for regression coverage. Authentication tests apply the actual Spring Security filter chain and use an isolated H2 database with a mocked mail sender. Browser smoke tests use a separate in-memory database, never production PostgreSQL.
 
 If your frontend uses a port other than 5173, configure app.cors.allowed-origins with that exact origin (for example http://localhost:5180). Keep the frontend API proxy pointed at the backend port.
+
+## Local frontend origins
+
+Local development allows credentialed API requests from `http://localhost:5173`, `http://127.0.0.1:5173`, `http://localhost:5174`, and `http://127.0.0.1:5174`. Vite can select port 5174 when 5173 is occupied. An origin omitted from this list receives `403 Invalid CORS request` before the login controller checks credentials. Restart the backend after changing this configuration.
+
+Use `CORS_ALLOWED_ORIGINS` to override the complete list with comma-separated trusted frontend origins for a different port or deployment. This can also be set with the `app.cors.allowed-origins` Spring property. Production should use its actual frontend origin. CSRF tokens, credentialed session cookies, account approval, and role permissions remain required; arbitrary origins are not allowed.

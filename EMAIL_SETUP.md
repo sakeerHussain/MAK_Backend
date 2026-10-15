@@ -1,5 +1,7 @@
 # Enable email delivery
 
+For persistent Windows development settings, run `.\backend.cmd setup`, choose `Y` for SMTP, then start using `.\backend.cmd start`. Passwords are encrypted under your Windows account outside the repository. See [LOCAL_SETUP.md](LOCAL_SETUP.md). The environment-variable instructions below remain available for other environments.
+
 The application uses configurable SMTP through Spring Boot's mail support:
 https://docs.spring.io/spring-boot/reference/io/email.html
 

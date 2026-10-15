@@ -1,8 +1,16 @@
 # Vehicle Rental Backend
 
-Spring Boot 4.1 / Java 21 API for the car-rental admin panel. Fleet and Drivers are implemented and connected to the React frontend. Other modules still use local demo state.
+Spring Boot 4.1 / Java 21 API for the car-rental admin panel, covering fleet, drivers, employees, vendors, customers and quotes, bookings, invoices, maintenance, inspections, dashboard reporting, authentication, and notifications.
 
-## Run locally
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the module/layer folder structure, dependency rules, and guidance for adding modules.
+
+## Persistent Windows development startup
+
+Run `.\backend.cmd setup` once to save the database and optional SMTP credentials encrypted for your Windows account, outside this repository and OneDrive. You need a working PostgreSQL password; setup does not reset it. Then use `.\backend.cmd start` in any terminal, including after reboot. The launcher selects Java 21 and performs a clean Maven build before starting.
+
+`.\backend.cmd check` validates the saved local configuration without starting the server or sending email. Reload VS Code once after setup so the project Java 21 settings take effect. See [LOCAL_SETUP.md](LOCAL_SETUP.md) for setup, email, storage, and verification details. The normal environment-variable workflow below remains available for deployment and other environments.
+
+## Run locally using environment variables
 
 1. Install Java 21 and PostgreSQL. Create a database named `car_rental` and a PostgreSQL user with access to it. For example, in `psql` as an administrator:
 
@@ -23,9 +31,9 @@ Spring Boot 4.1 / Java 21 API for the car-rental admin panel. Fleet and Drivers 
 
    `UPLOAD_DIR` defaults to the backend's `uploads` directory. Keep that directory persistent and back it up alongside the database. Uploaded files are stored on disk; the database stores their metadata.
 
-3. The API listens on `http://localhost:8080` and binds to loopback by default while authentication is not implemented. Set `SERVER_ADDRESS` if a different bind address is needed after access controls are in place. Flyway applies the Fleet and Driver migrations on startup. Hibernate validates the schema instead of modifying it. Restart the backend after adding a new migration.
+3. The API listens on `http://localhost:8080` and binds to loopback by default. Set `SERVER_ADDRESS` if a different bind address is needed. API access is protected by session authentication and role permissions; see [AUTH_SETUP.md](AUTH_SETUP.md). Flyway applies the versioned migrations on startup. Hibernate validates the schema instead of modifying it. Restart the backend after adding a new migration.
 
-Run checks with `./mvnw.cmd test`. The test profile uses an in-memory H2 database and applies the same migration.
+Run checks with `./mvnw.cmd test`. The test profile uses an in-memory H2 database and applies the same migrations.
 
 ## Fleet API
 
