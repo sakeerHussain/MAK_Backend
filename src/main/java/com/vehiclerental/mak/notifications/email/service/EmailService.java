@@ -61,6 +61,7 @@ public class EmailService {
         return response(message);
     }
     public void bookingEscalation(long bookingId,String recipient,String reference,String issue) { enqueue("BookingAlert",bookingId,recipient,"Urgent booking follow-up: "+reference,issue+"\nBooking: "+reference+"\nSign in to Rental Admin and review the Booking Attention Queue. Acknowledgement does not resolve the booking issue.",null,null); }
+    public void staffInvitation(long id,String recipient,String name,String role,String url){enqueue("Auth",id,recipient,"You are invited to MAK International","Hello "+name+",\n\nYou have been invited as "+role+". Create your account using this link within 7 days:\n"+url+"\n\nIf you did not expect this invitation, ignore it.",null,null);}
     public void passwordReset(long accountId,String recipient,String url) {
         enqueue("Auth",accountId,recipient,"Reset your Rental Admin password","Open this link to reset your password (valid for 30 minutes):\n"+url+"\n\nIf you did not request this, ignore this email.",null,null);
     }

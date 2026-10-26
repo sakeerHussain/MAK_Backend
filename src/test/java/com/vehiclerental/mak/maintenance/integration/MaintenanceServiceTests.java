@@ -3,6 +3,8 @@ package com.vehiclerental.mak.maintenance.integration;
 import com.vehiclerental.mak.common.exception.ApiException;
 import com.vehiclerental.mak.fleet.dto.request.VehicleStatusRequest;
 import com.vehiclerental.mak.fleet.entity.Vehicle;
+import com.vehiclerental.mak.fleet.repository.VehicleFileRepository;
+import com.vehiclerental.mak.RentalReadyFixture;
 import com.vehiclerental.mak.fleet.repository.VehicleRepository;
 import com.vehiclerental.mak.fleet.service.VehicleService;
 import com.vehiclerental.mak.maintenance.repository.MaintenanceRepository;
@@ -26,8 +28,8 @@ import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest
 class MaintenanceServiceTests {
- @Autowired MaintenanceService maintenance;@Autowired MaintenanceRepository jobs;@Autowired VehicleRepository vehicles;@Autowired VehicleService fleet;@Autowired RentalService rentals;@Autowired WebApplicationContext context;@Autowired ObjectMapper json;
- private Vehicle car(String status){String suffix=UUID.randomUUID().toString().substring(0,8);var v=new Vehicle();v.setRegistration("M-"+suffix);v.setVehicleId("V-"+suffix);v.setMake("Toyota");v.setModel("Camry");v.setYear(2025);v.setType("Sedan");v.setSeats(5);v.setTransmission("Automatic");v.setFuelType("Petrol");v.setDailyRate(new BigDecimal("200"));v.setRateCurrency("SAR");v.setOwnership("Owned");v.setStatus(status);v.setCurrentOdometerKm(12000L);v.setLastOilKm(10000L);v.setLastTyreKm(9000L);return vehicles.saveAndFlush(v);}
+ @Autowired VehicleFileRepository vehicleFiles;@Autowired MaintenanceService maintenance;@Autowired MaintenanceRepository jobs;@Autowired VehicleRepository vehicles;@Autowired VehicleService fleet;@Autowired RentalService rentals;@Autowired WebApplicationContext context;@Autowired ObjectMapper json;
+ private Vehicle car(String status){String suffix=UUID.randomUUID().toString().substring(0,8);var v=new Vehicle();v.setRegistration("M-"+suffix);v.setVehicleId("V-"+suffix);v.setMake("Toyota");v.setModel("Camry");v.setYear(2025);v.setType("Sedan");v.setSeats(5);v.setTransmission("Automatic");v.setFuelType("Petrol");v.setDailyRate(new BigDecimal("200"));v.setRateCurrency("SAR");v.setOwnership("Owned");v.setStatus(status);v.setCurrentOdometerKm(12000L);v.setLastOilKm(10000L);v.setLastTyreKm(9000L);v.setOnSite(true);vehicles.saveAndFlush(v);RentalReadyFixture.documents(vehicleFiles,v);return v;}
  private Map<String,Object> job(long vehicleId,String status){return new LinkedHashMap<>(Map.ofEntries(Map.entry("vehicleId",vehicleId),Map.entry("workType","Maintenance Log"),Map.entry("workItem","Oil & Filter Change"),Map.entry("status",status),Map.entry("serviceDate",LocalDate.now().toString()),Map.entry("odometerKm",13000),Map.entry("nextServiceOdometerKm",18000),Map.entry("notes","Workshop visit"),Map.entry("completedTasks",status.equals("Completed")?List.of("Oil"):List.of()),Map.entry("expenseLines",List.of(Map.of("id","line-1","category","Spare Parts","amount","75.25","description","Oil filter"),Map.of("id","line-2","category","Workshop Labor","amount","100.50","description","Labor")))));}
  private Map<String,Object> save(Long id,Map<String,Object> data){return maintenance.save(id,data,new LinkedMultiValueMap<>());}
  @Test void multipleOpenJobsHoldVehicleUntilLastJobClosesAndResetOnlyCheckedCounters(){
@@ -44,7 +46,7 @@ class MaintenanceServiceTests {
   var vehicle=car("Available");var data=job(vehicle.getId(),"Completed");data.put("odometerKm",9000);data.put("nextServiceOdometerKm",14000);save(null,data);var updated=vehicles.findById(vehicle.getId()).orElseThrow();assertEquals(12000,updated.getCurrentOdometerKm());assertEquals(10000,updated.getLastOilKm());assertNull(updated.getLastServiceKm());
  }
  @Test void rejectsActiveRentalsAndBookingAssignmentToMaintenanceVehicle(){
-  var vehicle=car("Available");var start=java.time.LocalDateTime.now().minusHours(1);var booking=new LinkedHashMap<String,Object>(Map.ofEntries(Map.entry("bookingType","Quick"),Map.entry("status","Active"),Map.entry("vehicleId",vehicle.getId()),Map.entry("driverMode","Self-drive"),Map.entry("customerName","Guest"),Map.entry("customerPhone","+966500000000"),Map.entry("customerEmail","guest@example.com"),Map.entry("pickupAt",start.toString()),Map.entry("returnAt",start.plusDays(1).toString()),Map.entry("pickupLocation","Khobar"),Map.entry("destination","Dammam"),Map.entry("totalAmount",200)));
+  var vehicle=car("Available");var start=java.time.LocalDateTime.now(java.time.ZoneId.of("Asia/Riyadh")).minusHours(1);var booking=new LinkedHashMap<String,Object>(Map.ofEntries(Map.entry("bookingType","Quick"),Map.entry("status","Active"),Map.entry("vehicleId",vehicle.getId()),Map.entry("driverMode","Self-drive"),Map.entry("customerName","Guest"),Map.entry("customerPhone","+966500000000"),Map.entry("customerEmail","guest@example.com"),Map.entry("pickupAt",start.toString()),Map.entry("returnAt",start.plusDays(1).toString()),Map.entry("pickupLocation","Khobar"),Map.entry("destination","Dammam"),Map.entry("totalAmount",200)));
   var rental=rentals.create("Individual",booking);assertThrows(ApiException.class,()->save(null,job(vehicle.getId(),"Open")));rentals.transition("Individual",((Number)rental.get("id")).longValue(),"Completed",Map.of());save(null,job(vehicle.getId(),"Open"));assertThrows(ApiException.class,()->rentals.create("Individual",booking));
  }
  @Test void receiptsPersistReplaceRemoveAndRollbackWithInvalidExpense(){

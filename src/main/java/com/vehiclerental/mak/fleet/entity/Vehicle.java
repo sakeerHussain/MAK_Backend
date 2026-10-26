@@ -1,6 +1,7 @@
 package com.vehiclerental.mak.fleet.entity;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import jakarta.persistence.CollectionTable;
@@ -76,6 +77,9 @@ public class Vehicle {
     private Long lastTyreKm;
     private Long brakeIntervalKm;
     private Long lastBrakeKm;
+    private LocalDate registrationExpiryDate;
+    private LocalDate insuranceExpiryDate;
+    private LocalDate inspectionExpiryDate;
 
     @ElementCollection(fetch = FetchType.LAZY)
     @CollectionTable(name = "vehicle_tags", joinColumns = @JoinColumn(name = "vehicle_id"))

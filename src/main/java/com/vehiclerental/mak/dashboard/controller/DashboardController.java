@@ -19,6 +19,6 @@ public class DashboardController {
   if(days!=7 && days!=30 && days!=90)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Choose 7, 30 or 90 days.");
   var account=accounts.active((AccountPrincipal)authentication.getPrincipal());
   if(account==null)throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
-  return dashboard.summary(days,Permissions.forRole(account.getRole()));
+  return dashboard.summary(days,accounts.permissions(account));
  }
 }

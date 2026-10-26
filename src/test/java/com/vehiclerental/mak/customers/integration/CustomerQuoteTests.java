@@ -40,7 +40,7 @@ class CustomerQuoteTests {
     }
     private CustomerResponse createCustomer() { return customers.create(customer("Corporate", "Test " + UUID.randomUUID())); }
     private QuoteRequest request(String status, List<QuoteRequest.Route> routes) {
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Riyadh"));
         return new QuoteRequest("Q-" + UUID.randomUUID(), status, today, today.plusDays(20), today, today.plusMonths(2),
                 new BigDecimal("15"), "Net 30", "Agreed scope", routes,
                 List.of(new QuoteRequest.Monthly("monthly-1", "Coaster", "20000", "1000", "30")),
@@ -52,7 +52,7 @@ class CustomerQuoteTests {
                 new QuoteRequest.Route("route-2", "Jubail", "Dammam, Al Khobar", "Riyadh", "SUV", "950"));
     }
     private QuoteApprovalRequest approval() {
-        return new QuoteApprovalRequest("Customer Manager", LocalDate.now(), "Email", "Email reference TEST-1", null);
+        return new QuoteApprovalRequest("Customer Manager", LocalDate.now(java.time.ZoneId.of("Asia/Riyadh")), "Email", "Email reference TEST-1", null);
     }
 
     @Test void customerPersistenceFilteringAndDeactivation() {
@@ -91,7 +91,7 @@ class CustomerQuoteTests {
         QuoteResponse draft = quotes.create(customer.id(), request("Draft", List.of()));
         assertThrows(ApiException.class, () -> quotes.approve(draft.id(), approval()));
         QuoteResponse shared = quotes.create(customer.id(), request("Shared", routes()));
-        assertThrows(ApiException.class, () -> quotes.approve(shared.id(), new QuoteApprovalRequest("Tester", LocalDate.now().plusDays(1), "Email", "Ref", null)));
+        assertThrows(ApiException.class, () -> quotes.approve(shared.id(), new QuoteApprovalRequest("Tester", LocalDate.now(java.time.ZoneId.of("Asia/Riyadh")).plusDays(1), "Email", "Ref", null)));
         assertThrows(ApiException.class, () -> quotes.create(customer.id(), request("Approved", routes())));
     }
 

@@ -119,7 +119,7 @@ public class VehicleService {
 
     private void validateBusinessRules(VehicleRequest request, Long id) {
         Long excluded = id == null ? -1L : id;
-        if (request.year() > LocalDate.now().getYear() + 1) throw new ApiException(HttpStatus.BAD_REQUEST, "Year of registration cannot be in the distant future.");
+        if (request.year() > LocalDate.now(java.time.ZoneId.of("Asia/Riyadh")).getYear() + 1) throw new ApiException(HttpStatus.BAD_REQUEST, "Year of registration cannot be in the distant future.");
         if (vehicles.existsByRegistrationIgnoreCaseAndIdNot(request.registration().trim(), excluded)) throw new ApiException(HttpStatus.CONFLICT, "Registration number already exists.");
         if (vehicles.existsByVehicleIdIgnoreCaseAndIdNot(request.vehicleId().trim(), excluded)) throw new ApiException(HttpStatus.CONFLICT, "Vehicle ID already exists.");
         if ("Vendor".equals(request.ownership()) && (request.vendor() == null || request.vendor().isBlank())) throw new ApiException(HttpStatus.BAD_REQUEST, "Vendor is required for vendor-owned vehicles.");
@@ -169,6 +169,9 @@ public class VehicleService {
         vehicle.setLastTyreKm(request.lastTyreKm());
         vehicle.setBrakeIntervalKm(request.brakeIntervalKm());
         vehicle.setLastBrakeKm(request.lastBrakeKm());
+        vehicle.setRegistrationExpiryDate(request.registrationExpiryDate());
+        vehicle.setInsuranceExpiryDate(request.insuranceExpiryDate());
+        vehicle.setInspectionExpiryDate(request.inspectionExpiryDate());
     }
 
     private VehicleResponse response(Vehicle vehicle, List<VehicleFile> records) {
@@ -179,11 +182,12 @@ public class VehicleService {
                 vehicle.getRateCurrency(), vehicle.getOwnership(), vehicle.getVendor(), vehicle.getStatus(), vehicle.getCustodian(),
                 vehicle.isOnSite(), vehicle.isListedForBooking(), vehicle.isShowOnPublicSite(), vehicle.getServiceIntervalKm(),
                 vehicle.getLastServiceKm(), vehicle.getCurrentOdometerKm(), vehicle.getOilIntervalKm(), vehicle.getLastOilKm(),
-                vehicle.getTyreIntervalKm(), vehicle.getLastTyreKm(), vehicle.getBrakeIntervalKm(), vehicle.getLastBrakeKm());
+                vehicle.getTyreIntervalKm(), vehicle.getLastTyreKm(), vehicle.getBrakeIntervalKm(), vehicle.getLastBrakeKm(),
+                vehicle.getRegistrationExpiryDate(), vehicle.getInsuranceExpiryDate(), vehicle.getInspectionExpiryDate());
         List<VehicleFileResponse> images = records.stream().filter(file -> "IMAGE".equals(file.getKind())).map(VehicleFileMapper::toResponse).toList();
         List<VehicleFileResponse> documents = records.stream().filter(file -> "DOCUMENT".equals(file.getKind())).map(VehicleFileMapper::toResponse).toList();
-        String documentStatus = documents.stream().anyMatch(file -> file.expiryDate() != null && file.expiryDate().isBefore(LocalDate.now())) ? "Expired"
-                : documents.stream().map(VehicleFileResponse::type).collect(Collectors.toSet()).containsAll(REQUIRED_DOCUMENTS) ? "Complete" : "Missing";
+        String documentStatus = VehicleCompliance.hasExpired(vehicle, records, LocalDate.now(java.time.ZoneId.of("Asia/Riyadh"))) ? "Expired"
+                : documents.stream().filter(file -> file.expiryDate() != null && !file.expiryDate().isBefore(LocalDate.now(java.time.ZoneId.of("Asia/Riyadh")))).map(VehicleFileResponse::type).collect(Collectors.toSet()).containsAll(REQUIRED_DOCUMENTS) ? "Complete" : "Missing";
         String owner = "Vendor".equals(vehicle.getOwnership()) ? vehicle.getVendor() : "Leased".equals(vehicle.getOwnership()) ? "Leased Fleet" : "Company Fleet";
         return new VehicleResponse(vehicle.getId(), details, owner, documentStatus, images, documents);
     }

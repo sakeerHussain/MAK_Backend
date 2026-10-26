@@ -26,7 +26,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 @Configuration
 public class SecurityConfig {
  @Bean PasswordEncoder passwordEncoder(){return new BCryptPasswordEncoder(12);}
- @Bean org.springframework.security.core.userdetails.UserDetailsService databaseUsers(AccountRepository accounts){return username->{var account=accounts.findByEmail(username.toLowerCase(java.util.Locale.ROOT)).orElseThrow(()->new org.springframework.security.core.userdetails.UsernameNotFoundException("Account not found."));return org.springframework.security.core.userdetails.User.withUsername(account.getEmail()).password(account.getPasswordHash()).authorities(Permissions.forRole(account.getRole()).toArray(String[]::new)).disabled(!account.getStatus().equals("Active")).build();};}
+ @Bean org.springframework.security.core.userdetails.UserDetailsService databaseUsers(AccountRepository accounts,com.vehiclerental.mak.auth.service.RoleService roles){return username->{var account=accounts.findByEmail(username.toLowerCase(java.util.Locale.ROOT)).orElseThrow(()->new org.springframework.security.core.userdetails.UsernameNotFoundException("Account not found."));return org.springframework.security.core.userdetails.User.withUsername(account.getEmail()).password(account.getPasswordHash()).authorities(roles.permissions(account).toArray(String[]::new)).disabled(!account.getStatus().equals("Active")).build();};}
  @Bean HttpSessionSecurityContextRepository contextRepository(){return new HttpSessionSecurityContextRepository();}
  @Bean HttpSessionCsrfTokenRepository csrfRepository(){return new HttpSessionCsrfTokenRepository();}
  @Bean SecurityFilterChain security(HttpSecurity http,AccountService accounts,EmailRepository emails,HttpSessionSecurityContextRepository contexts,HttpSessionCsrfTokenRepository csrf,
@@ -42,26 +42,41 @@ public class SecurityConfig {
    .addFilterBefore(new AuthRateLimitFilter(rateLimit),UsernamePasswordAuthenticationFilter.class);
   http.authorizeHttpRequests(rules->{
    rules.requestMatchers("/error").permitAll();
-   rules.requestMatchers("/api/notifications","/api/notifications/**").access((authentication,context)->new AuthorizationDecision(allowed(accounts,authentication.get(),"bookings.write") || allowed(accounts,authentication.get(),"corporate-trips.write")));
-   rules.requestMatchers(HttpMethod.GET,"/api/auth/config","/api/auth/csrf","/api/auth/me").permitAll();
+   rules.requestMatchers("/api/notifications","/api/notifications/**").access((authentication,context)->new AuthorizationDecision(operates(accounts,authentication.get(),"bookings") || operates(accounts,authentication.get(),"corporate-trips")));
+   rules.requestMatchers(HttpMethod.GET,"/api/auth/config","/api/auth/csrf","/api/auth/me","/api/auth/invitation").permitAll();
    rules.requestMatchers(HttpMethod.POST,"/api/auth/signup","/api/auth/login","/api/auth/forgot-password","/api/auth/reset-password").permitAll();
    rules.requestMatchers("/api/users","/api/users/**").access(permission(accounts,"users.manage"));
    rules.requestMatchers(HttpMethod.GET,"/api/dashboard").access(permission(accounts,"dashboard.read"));
     rules.requestMatchers(HttpMethod.GET,"/api/security-audit").access(permission(accounts,"audit.read"));
-   for(String module:Permissions.MODULES){String resource=module.equals("fleet")?"vehicles":module;rules.requestMatchers(HttpMethod.GET,"/api/"+resource,"/api/"+resource+"/**").access(permission(accounts,module+".read"));rules.requestMatchers(HttpMethod.HEAD,"/api/"+resource,"/api/"+resource+"/**").access(permission(accounts,module+".read"));rules.requestMatchers("/api/"+resource,"/api/"+resource+"/**").access(permission(accounts,module+".write"));}
+   rules.requestMatchers(HttpMethod.POST,"/api/vehicles/import-drafts","/api/vehicles/import-drafts/*/complete").access(permission(accounts,"fleet.create"));
+   for(String module:Permissions.MODULES){String resource=module.equals("fleet")?"vehicles":module;rules.requestMatchers(HttpMethod.GET,"/api/"+resource,"/api/"+resource+"/**").access(permission(accounts,module+".read"));rules.requestMatchers(HttpMethod.HEAD,"/api/"+resource,"/api/"+resource+"/**").access(permission(accounts,module+".read"));rules.requestMatchers("/api/"+resource,"/api/"+resource+"/**").access((authentication,context)->{
+     var req=context.getRequest();String path=req.getRequestURI().substring(req.getContextPath().length());String verb=req.getMethod();String tail=path.substring(("/api/"+resource).length());String action="DELETE".equals(verb)?"archive":"POST".equals(verb)&&(tail.isEmpty()||tail.equals("/save")||tail.equals("/import"))?"create":"edit";
+     if(module.equals("fleet")&&"POST".equals(verb)&&(tail.equals("/import-drafts")||tail.matches("/import-drafts/[^/]+/complete")))action="create";
+     if(module.equals("customers")&&"POST".equals(verb)&&tail.matches("/[^/]+/quotes"))action="create";
+     if(module.equals("invoices")){
+      if(tail.equals("/billing-profile"))return new AuthorizationDecision(allowed(accounts,authentication.get(),"billing-profile.write"));
+      if(tail.matches("/[^/]+/issue"))return new AuthorizationDecision(allowed(accounts,authentication.get(),"invoices.issue"));
+      if(tail.matches("/[^/]+/credit-notes"))return new AuthorizationDecision(allowed(accounts,authentication.get(),"invoices.credit"));
+      if(tail.matches("/[^/]+/discard"))action="archive";
+      if(tail.matches("/[^/]+/payments"))return new AuthorizationDecision(allowed(accounts,authentication.get(),"invoices.read"));
+     }
+     if(module.equals("bookings")&&tail.matches("/[^/]+/payments"))return new AuthorizationDecision(allowed(accounts,authentication.get(),"bookings.read"));
+     return new AuthorizationDecision(allowed(accounts,authentication.get(),module+"."+action));
+    });}
    rules.requestMatchers(HttpMethod.GET,"/api/quotes","/api/quotes/**").access(permission(accounts,"customers.read"));
-   rules.requestMatchers("/api/quotes","/api/quotes/**").access(permission(accounts,"customers.write"));
+   rules.requestMatchers("/api/quotes","/api/quotes/**").access((authentication,context)->new AuthorizationDecision(allowed(accounts,authentication.get(),"customers."+(context.getRequest().getMethod().equals("DELETE")?"archive":context.getRequest().getMethod().equals("POST")&&context.getRequest().getRequestURI().endsWith("/quotes")?"create":"edit"))));
    rules.requestMatchers("/api/emails","/api/emails/**").access((authentication,context)->{
     String kind=context.getRequest().getParameter("kind");
     if(!context.getRequest().getMethod().equals("GET")){try{String[] parts=context.getRequest().getRequestURI().split("/");kind=emails.findById(Long.parseLong(parts[3])).map(e->e.getRecordKind()).orElse(null);}catch(RuntimeException ignored){kind=null;}}
     String module="Individual".equals(kind)?"bookings":"Corporate".equals(kind)?"corporate-trips":"Invoice".equals(kind)?"invoices":null;
-    return new AuthorizationDecision(module!=null && allowed(accounts,authentication.get(),module+(context.getRequest().getMethod().equals("GET")?".read":".write")));
+    return new AuthorizationDecision(module!=null && allowed(accounts,authentication.get(),module+(context.getRequest().getMethod().equals("GET")?".read":".edit")));
    });
    rules.anyRequest().denyAll();
   });return http.build();
  }
  private AuthorizationManager<RequestAuthorizationContext> permission(AccountService accounts,String permission){return (authentication,context)->new AuthorizationDecision(allowed(accounts,authentication.get(),permission));}
+ private boolean operates(AccountService accounts,org.springframework.security.core.Authentication auth,String module){if(auth==null||!(auth.getPrincipal() instanceof AccountPrincipal principal))return false;var account=accounts.active(principal);return account!=null&&com.vehiclerental.mak.auth.security.RolePolicy.operates(accounts.permissions(account),module);}
  private boolean allowed(AccountService accounts,org.springframework.security.core.Authentication authentication,String permission){
-  if(authentication==null || !(authentication.getPrincipal() instanceof AccountPrincipal principal))return false;var account=accounts.active(principal);return account!=null && Permissions.forRole(account.getRole()).contains(permission);
+  if(authentication==null || !(authentication.getPrincipal() instanceof AccountPrincipal principal))return false;var account=accounts.active(principal);return account!=null && accounts.permissions(account).contains(permission);
  }
 }

@@ -83,7 +83,7 @@ public class QuoteService {
         if (approval.by() == null || approval.by().isBlank() || approval.note() == null || approval.note().isBlank() || approval.date() == null)
             throw bad("Record the approver, date and evidence reference.");
         if (!Set.of("Email", "Signed quote", "Customer portal", "Other").contains(approval.method())) throw bad("Invalid approval method.");
-        if (approval.date().isBefore(quote.getIssueDate()) || approval.date().isAfter(LocalDate.now())
+        if (approval.date().isBefore(quote.getIssueDate()) || approval.date().isAfter(LocalDate.now(java.time.ZoneId.of("Asia/Riyadh")))
                 || quote.getOfferValidUntil() == null || approval.date().isAfter(quote.getOfferValidUntil()))
             throw bad("Approval must be between the issue date and offer expiry, and cannot be in the future.");
         boolean overlaps = quotes.findByCustomerIdOrderByVersionDesc(customer.getId()).stream().anyMatch(other ->
@@ -138,10 +138,10 @@ public class QuoteService {
         if (!Set.of("Draft", "Shared").contains(request.status())) throw bad("Save as Draft or Shared; record approval separately.");
         validate(request, "Shared".equals(request.status()));
         String number = request.number() == null || request.number().isBlank()
-                ? "Q-" + LocalDate.now().getYear() + "-" + quote.getId().substring(0, 8).toUpperCase(Locale.ROOT) : request.number().trim().toUpperCase(Locale.ROOT);
+                ? "Q-" + LocalDate.now(java.time.ZoneId.of("Asia/Riyadh")).getYear() + "-" + quote.getId().substring(0, 8).toUpperCase(Locale.ROOT) : request.number().trim().toUpperCase(Locale.ROOT);
         if (quotes.existsByNumberIgnoreCaseAndIdNot(number, quote.getId())) throw conflict("Quote number already exists.");
         quote.setNumber(number); quote.setStatus(request.status());
-        quote.setIssueDate(request.issueDate() == null ? LocalDate.now() : request.issueDate());
+        quote.setIssueDate(request.issueDate() == null ? LocalDate.now(java.time.ZoneId.of("Asia/Riyadh")) : request.issueDate());
         quote.setOfferValidUntil(request.offerValidUntil()); quote.setEffectiveFrom(request.effectiveFrom()); quote.setEffectiveTo(request.effectiveTo());
         quote.setTaxPercent(request.taxPercent() == null ? BigDecimal.ZERO : request.taxPercent());
         quote.setPaymentTerms(request.paymentTerms()); quote.setNotes(request.notes());

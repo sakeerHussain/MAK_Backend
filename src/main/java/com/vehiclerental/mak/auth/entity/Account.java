@@ -17,4 +17,5 @@ public class Account {
  private Instant lockedUntil;
  @Column(nullable=false) private Instant createdAt;
  private Instant lastLoginAt;
+ private Long customRoleId;
 }

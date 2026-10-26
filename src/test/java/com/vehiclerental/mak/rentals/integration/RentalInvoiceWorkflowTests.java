@@ -8,6 +8,8 @@ import com.vehiclerental.mak.customers.dto.response.QuoteResponse;
 import com.vehiclerental.mak.customers.service.CustomerService;
 import com.vehiclerental.mak.customers.service.QuoteService;
 import com.vehiclerental.mak.fleet.entity.Vehicle;
+import com.vehiclerental.mak.fleet.repository.VehicleFileRepository;
+import com.vehiclerental.mak.RentalReadyFixture;
 import com.vehiclerental.mak.fleet.repository.VehicleRepository;
 import com.vehiclerental.mak.invoices.service.InvoiceService;
 import com.vehiclerental.mak.notifications.email.repository.EmailRepository;
@@ -36,6 +38,7 @@ class RentalInvoiceWorkflowTests {
     @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
     @Autowired InvoiceService invoices;
     @Autowired VehicleRepository vehicles;
+    @Autowired VehicleFileRepository vehicleFiles;
     @Autowired CustomerService customers;
     @Autowired QuoteService quotes;
     @Autowired WebApplicationContext context;
@@ -50,12 +53,12 @@ class RentalInvoiceWorkflowTests {
         v.setSeats(5); v.setTransmission("Automatic"); v.setFuelType("Petrol");
         v.setDailyRate(new BigDecimal("200")); v.setRateCurrency("SAR"); v.setOwnership("Owned");
         v.setStatus("Available");
-        return vehicles.saveAndFlush(v);
+        v.setOnSite(true); vehicles.saveAndFlush(v); RentalReadyFixture.documents(vehicleFiles,v); return v;
     }
 
     @Test void quickBookingDepositInvoiceAndPaymentPersist() {
         long vehicleId = vehicle().getId();
-        LocalDateTime start = LocalDateTime.now().minusHours(2).withSecond(0).withNano(0);
+        LocalDateTime start = LocalDateTime.now(java.time.ZoneId.of("Asia/Riyadh")).minusHours(2).withSecond(0).withNano(0);
         Map<String, Object> booking = rentals.create("Individual", Map.ofEntries(
                 Map.entry("bookingType", "Quick"), Map.entry("status", "Active"),
                 Map.entry("customerName", "Test Guest"), Map.entry("customerPhone", "+966500000001"),
@@ -74,13 +77,13 @@ class RentalInvoiceWorkflowTests {
         assertEquals(2,emails.findByRecordKindAndRecordIdOrderByIdDesc("Individual",id).size());
         assertEquals("Available", vehicles.findById(vehicleId).orElseThrow().getStatus());
         Map<String, Object> draft = Map.ofEntries(
-                Map.entry("kind", "Individual"), Map.entry("currency", "SAR"),
+                Map.entry("bookingChargeReview",Map.of("confirmed",true)), Map.entry("kind", "Individual"), Map.entry("currency", "SAR"),
                 Map.entry("sources", List.of(Map.of("kind", "Individual", "id", id, "reference", booking.get("bookingId")))),
                 Map.entry("lines", List.of(Map.of("description", "Rental", "unit", "Trip", "quantity", 1,
                         "unitPrice", 200, "discountPercent", 0, "taxPercent", 15))),
                 Map.entry("issuer", Map.of("name", "Rental Company", "street", "Main Street")),
                 Map.entry("billTo", Map.of("name", "Test Guest", "email", "guest@example.com")),
-                Map.entry("dueDate", LocalDate.now().plusDays(7).toString()));
+                Map.entry("dueDate", LocalDate.now(java.time.ZoneId.of("Asia/Riyadh")).plusDays(7).toString()));
         Map<String, Object> invoice = invoices.create(draft, true);
         long invoiceId = ((Number) invoice.get("id")).longValue();
         assertEquals("Issued", invoice.get("status"));
@@ -96,10 +99,10 @@ class RentalInvoiceWorkflowTests {
         assertEquals(1, ((List<?>) invoice.get("payments")).size());
         assertThrows(ApiException.class, () -> invoices.create(draft, false));
         Map<String, Object> paid = invoices.payment(invoiceId, Map.of("kind", "Payment", "amount", 200,
-                "date", LocalDate.now().toString(), "method", "Card", "reference", "TX-1"));
+                "date", LocalDate.now(java.time.ZoneId.of("Asia/Riyadh")).toString(), "method", "Card", "reference", "TX-1"));
         assertEquals(2, ((List<?>) paid.get("payments")).size());
         assertEquals(0, new BigDecimal("230").compareTo(new BigDecimal(rentals.get("Individual", id).get("receivedAmount").toString())));
-        assertThrows(ApiException.class, () -> invoices.payment(invoiceId, Map.of("kind", "Payment", "amount", 1, "date", LocalDate.now().toString())));
+        assertThrows(ApiException.class, () -> invoices.payment(invoiceId, Map.of("kind", "Payment", "amount", 1, "date", LocalDate.now(java.time.ZoneId.of("Asia/Riyadh")).toString())));
     }
 
     private Map<String, Object> individual(String type, String status, LocalDateTime start) {
@@ -118,7 +121,7 @@ class RentalInvoiceWorkflowTests {
     }
 
     private Map<String, Object> corporate(long company, long vehicle) {
-        LocalDateTime start = LocalDateTime.now().minusHours(1).withSecond(0).withNano(0);
+        LocalDateTime start = LocalDateTime.now(java.time.ZoneId.of("Asia/Riyadh")).minusHours(1).withSecond(0).withNano(0);
         Map<String, Object> data = new LinkedHashMap<>(Map.ofEntries(Map.entry("bookingType", "Quick"), Map.entry("status", "Active"),
                 Map.entry("companyId", company), Map.entry("companyName", "Test Corporate Account"),
                 Map.entry("contactName", "Coordinator"), Map.entry("contactPhone", "+966500000004"), Map.entry("contactEmail", "contact@example.com"),
@@ -135,7 +138,7 @@ class RentalInvoiceWorkflowTests {
     }
 
     @Test void advanceAssignmentIsDeferredAndStatusEditsAreAtomic() {
-        LocalDateTime tomorrow = LocalDateTime.now().plusDays(1).withSecond(0).withNano(0);
+        LocalDateTime tomorrow = LocalDateTime.now(java.time.ZoneId.of("Asia/Riyadh")).plusDays(1).withSecond(0).withNano(0);
         Map<String, Object> saved = rentals.create("Individual", individual("Advance", "Pending", tomorrow));
         long id = ((Number) saved.get("id")).longValue();
         assertNull(saved.get("vehicleId"));
@@ -150,7 +153,7 @@ class RentalInvoiceWorkflowTests {
         Map<String, Object> today = individual("Advance", "Confirmed", tomorrow);
         long todayId = ((Number) rentals.create("Individual", today).get("id")).longValue();
         // Simulate reaching pickup day without a fixture that crosses midnight.
-        LocalDateTime duePickup = LocalDateTime.now().minusMinutes(1);
+        LocalDateTime duePickup = LocalDateTime.now(java.time.ZoneId.of("Asia/Riyadh")).minusMinutes(1);
         today.put("pickupAt", duePickup.toString());
         jdbc.update("update rental_records set pickup_at=?,payload=? where id=?", duePickup, json.writeValueAsString(today), todayId);
         Map<String, Object> assigned = rentals.assign("Individual", todayId, Map.of("vehicleId", vehicle, "handedOver", true));
@@ -166,7 +169,7 @@ class RentalInvoiceWorkflowTests {
         Map<String, Object> data = corporate(account, car);
         Map<String, Object> trip = rentals.create("Corporate", data);
         long tripId = ((Number) trip.get("id")).longValue();
-        Map<String, Object> conflicting = individual("Quick", "Confirmed", LocalDateTime.now().withSecond(0).withNano(0));
+        Map<String, Object> conflicting = individual("Quick", "Confirmed", LocalDateTime.now(java.time.ZoneId.of("Asia/Riyadh")).withSecond(0).withNano(0));
         conflicting.put("vehicleId", car);
         assertThrows(ApiException.class, () -> rentals.create("Individual", conflicting));
         Map<String, Object> invalidPrice = corporate(account, vehicle().getId());
@@ -181,7 +184,7 @@ class RentalInvoiceWorkflowTests {
                 "lines", List.of(Map.of("description", "Two trips", "unit", "Trip", "quantity", 2, "unitPrice", 225, "taxPercent", 15)),
                 "issuer", Map.of("name", "Rental Company", "street", "Main Street"),
                 "billTo", Map.of("name", "Company", "email", "billing@example.com", "street", "Main Street", "city", "Al Khobar", "country", "Saudi Arabia"),
-                "dueDate", LocalDate.now().plusDays(30).toString()));
+                "dueDate", LocalDate.now(java.time.ZoneId.of("Asia/Riyadh")).plusDays(30).toString()));
         Map<String, Object> invoice = invoices.create(draft, true);
         assertEquals(2, ((List<?>) invoice.get("sources")).size());
         assertEquals("Issued", invoice.get("status"));
@@ -190,19 +193,19 @@ class RentalInvoiceWorkflowTests {
         long invoiceId = ((Number) invoice.get("id")).longValue();
         assertThrows(ApiException.class, () -> invoices.update(invoiceId, draft, false));
         assertThrows(ApiException.class, () -> invoices.payment(invoiceId, Map.of("kind", "Payment", "amount", new BigDecimal("0.001"),
-                "date", LocalDate.now().toString(), "method", "Cash")));
+                "date", LocalDate.now(java.time.ZoneId.of("Asia/Riyadh")).toString(), "method", "Cash")));
     }
 
     @Test void approvedQuoteIsPricedOnServerAndSnapshotSurvivesRevision() {
         long customerId = customers.create(new CustomerRequest("Individual", "Quoted " + UUID.randomUUID(), "123", "quoted@example.com",
                 "", "Active", "", "", "", "", "", "", "", BigDecimal.ZERO, 0, 15)).id();
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(java.time.ZoneId.of("Asia/Riyadh"));
         QuoteResponse shared = quotes.create(customerId, new QuoteRequest("Q-" + UUID.randomUUID(), "Shared", today, today.plusDays(30),
                 today, today.plusMonths(1), new BigDecimal("15"), "", "",
                 List.of(new QuoteRequest.Route("route-1", "Al Khobar", "", "Dammam", "Sedan", "100")),
                 List.of(), List.of(), new QuoteRequest.Extras("2.5", "", "50", "", "", "")));
         QuoteResponse approved = quotes.approve(shared.id(), new QuoteApprovalRequest("Customer", today, "Email", "Approval email TEST", null));
-        Map<String, Object> booking = individual("Advance", "Confirmed", LocalDateTime.now().plusDays(1).withSecond(0).withNano(0));
+        Map<String, Object> booking = individual("Advance", "Confirmed", LocalDateTime.now(java.time.ZoneId.of("Asia/Riyadh")).plusDays(1).withSecond(0).withNano(0));
         booking.put("customerId", customerId); booking.put("extraKm", 10); booking.put("overtimeHours", 1);
         booking.put("totalAmount", new BigDecimal("201.25"));
         booking.put("quoteSnapshot", Map.of("quoteId", approved.id(), "quoteNumber", approved.number(), "version", approved.version(),
@@ -223,7 +226,7 @@ class RentalInvoiceWorkflowTests {
 
     @Test void apiReturnsPersistedRecordsAndValidationErrors() throws Exception {
         var mvc = MockMvcBuilders.webAppContextSetup(context).build();
-        Map<String, Object> request = individual("Advance", "Pending", LocalDateTime.now().plusDays(2).withSecond(0).withNano(0));
+        Map<String, Object> request = individual("Advance", "Pending", LocalDateTime.now(java.time.ZoneId.of("Asia/Riyadh")).plusDays(2).withSecond(0).withNano(0));
         mvc.perform(post("/api/bookings").contentType("application/json").content(json.writeValueAsString(request)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.bookingId").exists()).andExpect(jsonPath("$.status").value("Pending"));
         mvc.perform(get("/api/bookings")).andExpect(status().isOk()).andExpect(jsonPath("$").isArray());

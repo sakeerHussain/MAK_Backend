@@ -8,6 +8,7 @@ import com.vehiclerental.mak.customers.repository.QuoteRepository;
 import com.vehiclerental.mak.drivers.entity.Driver;
 import com.vehiclerental.mak.drivers.repository.DriverRepository;
 import com.vehiclerental.mak.fleet.entity.Vehicle;
+import com.vehiclerental.mak.fleet.service.VehicleCompliance;
 import com.vehiclerental.mak.fleet.repository.VehicleRepository;
 import com.vehiclerental.mak.invoices.repository.InvoiceRepository;
 import com.vehiclerental.mak.invoices.repository.InvoiceSourceRepository;
@@ -21,6 +22,9 @@ import com.vehiclerental.mak.rentals.repository.RentalRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.OffsetDateTime;
+import com.vehiclerental.mak.fleet.repository.VehicleFileRepository;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
@@ -37,6 +41,8 @@ import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class RentalService {
+    private static final ZoneId KSA = ZoneId.of("Asia/Riyadh");
+    private final VehicleFileRepository vehicleFiles;
     private final RentalRepository rentals;
     private final RentalPaymentRepository payments;
     private final CustomerRepository customers;
@@ -50,9 +56,9 @@ public class RentalService {
     private final BookingNotificationService notifications;
 
     public RentalService(RentalRepository rentals, RentalPaymentRepository payments, CustomerRepository customers,
-            QuoteRepository quotes, VehicleRepository vehicles, DriverRepository drivers,
+            QuoteRepository quotes, VehicleRepository vehicles, DriverRepository drivers, VehicleFileRepository vehicleFiles,
             InvoiceSourceRepository invoiceSources, InvoiceRepository invoices, ObjectMapper json, EmailService emails, BookingNotificationService notifications) {
-        this.rentals = rentals; this.payments = payments; this.customers = customers; this.quotes = quotes;
+        this.vehicleFiles = vehicleFiles; this.rentals = rentals; this.payments = payments; this.customers = customers; this.quotes = quotes;
         this.vehicles = vehicles; this.drivers = drivers; this.invoiceSources = invoiceSources; this.invoices = invoices; this.json = json; this.emails = emails; this.notifications = notifications;
     }
 
@@ -70,7 +76,7 @@ public class RentalService {
         request.remove("handedOverAt"); request.remove("actualReturnAt");
         RentalRecord record = new RentalRecord();
         record.setKind(kind); record.setCreatedAt(Instant.now());
-        apply(record, request, false);
+        apply(record, request, false, true);
         stampLifecycle(record, request);
         rentals.saveAndFlush(record);
         record.setReference((kind.equals("Corporate") ? "CT-" : "BK-") + (kind.equals("Corporate") ? 3000 + record.getId() : 2000 + record.getId()));
@@ -103,13 +109,14 @@ public class RentalService {
         merged.put("handedOverAt", current.getOrDefault("handedOverAt", ""));
         merged.remove("actualReturnAt");
         String nextStatus = text(merged.get("status"));
+        boolean starting = "Active".equals(nextStatus) && !"Active".equals(record.getStatus());
         if (!record.getStatus().equals(nextStatus)) validateTransition(record.getStatus(), nextStatus);
         if ("Active".equals(record.getStatus()) && (!java.util.Objects.equals(record.getVehicleId(), numberId(merged.get("vehicleId")))
                 || !java.util.Objects.equals(record.getDriverId(), numberId(merged.get("driverId")))))
             throw conflict("Complete the rental before changing assigned resources.");
         record.setStatus(nextStatus);
         stampLifecycle(record, merged);
-        apply(record, merged, true);
+        apply(record, merged, true, starting);
         record.setPayload(json.writeValueAsString(merged));
         rentals.saveAndFlush(record);
         syncResources(record);
@@ -134,11 +141,11 @@ public class RentalService {
                 || ("Corporate".equals(kind) && !"Self-drive".equals(text(merged.get("serviceMode"))) && numberId(merged.get("driverId")) == null)
                 || ("Individual".equals(kind) && !"Self-drive".equals(text(merged.get("driverMode"))) && numberId(merged.get("driverId")) == null)))
             throw bad("Assign the required vehicle and driver before handover.");
-        if ("Active".equals(status) && record.getPickupAt().toLocalDate().isAfter(LocalDate.now()))
+        if ("Active".equals(status) && record.getPickupAt().toLocalDate().isAfter(LocalDate.now(KSA)))
             throw bad("Handover is only available on or after the pickup day.");
         record.setStatus(status);
         stampLifecycle(record, merged);
-        if (!Set.of("Completed", "Cancelled").contains(status)) apply(record, merged, true);
+        if (!Set.of("Completed", "Cancelled").contains(status)) apply(record, merged, true, !"Active".equals(from));
         record.setPayload(json.writeValueAsString(merged));
         rentals.saveAndFlush(record);
         syncResources(record);
@@ -152,7 +159,7 @@ public class RentalService {
     public Map<String, Object> assign(String kind, long id, Map<String, Object> changes) {
         RentalRecord record = requireLocked(kind, id);
         if (!"Confirmed".equals(record.getStatus())) throw conflict("Only confirmed rentals can be assigned.");
-        if (record.getPickupAt().toLocalDate().isAfter(LocalDate.now())) throw bad("Assign advance rentals on the pickup day.");
+        if (record.getPickupAt().toLocalDate().isAfter(LocalDate.now(KSA))) throw bad("Assign advance rentals on the pickup day.");
         Map<String, Object> merged = response(record);
         for (String key : List.of("vehicleId", "driverId", "driverMode"))
             if (changes.containsKey(key)) merged.put(key, changes.get(key));
@@ -161,10 +168,10 @@ public class RentalService {
             if (numberId(merged.get("vehicleId")) == null) throw bad("Select a vehicle for handover.");
             if (!"Self-drive".equals(text(merged.get(kind.equals("Corporate") ? "serviceMode" : "driverMode")))
                     && numberId(merged.get("driverId")) == null) throw bad("Select a driver for handover.");
-            merged.put("handedOverAt", LocalDateTime.now().toString());
+            merged.put("handedOverAt", LocalDateTime.now(KSA).toString());
         }
         record.setStatus(text(merged.get("status")));
-        apply(record, merged, true);
+        apply(record, merged, true, true);
         record.setPayload(json.writeValueAsString(merged));
         rentals.saveAndFlush(record);
         syncResources(record);
@@ -192,7 +199,7 @@ public class RentalService {
         return response(rentals.saveAndFlush(record));
     }
 
-    private void apply(RentalRecord record, Map<String, Object> data, boolean updating) {
+    private void apply(RentalRecord record, Map<String, Object> data, boolean updating, boolean starting) {
         String kind = record.getKind();
         String type = text(data.get("bookingType"));
         String status = text(data.get("status"));
@@ -203,8 +210,9 @@ public class RentalService {
         if (updating && !record.getStatus().equals(status)) throw conflict("Use the status action to change booking status.");
         LocalDateTime pickup = dateTime(data.get("pickupAt"));
         LocalDateTime returned = dateTime(data.get("returnAt"));
+        data.put("pickupAt", pickup.toString()); data.put("returnAt", returned.toString());
         if (!returned.isAfter(pickup)) throw bad("Return must be after pickup.");
-        if ("Advance".equals(type) && !updating && !pickup.isAfter(LocalDateTime.now()))
+        if ("Advance".equals(type) && !updating && !pickup.isAfter(LocalDateTime.now(KSA)))
             throw bad("Advance pickup must be in the future.");
         BigDecimal total = money(data.get("totalAmount"));
         if (total.signum() <= 0) throw bad("Total amount must be positive.");
@@ -234,13 +242,13 @@ public class RentalService {
         Long driverId = numberId(data.get("driverId"));
         if ("Advance".equals(type) && !updating && (vehicleId != null || driverId != null))
             throw bad("Advance rentals are assigned on the pickup day.");
-        if ("Advance".equals(type) && pickup.toLocalDate().isAfter(LocalDate.now()) && (vehicleId != null || driverId != null))
+        if ("Advance".equals(type) && pickup.toLocalDate().isAfter(LocalDate.now(KSA)) && (vehicleId != null || driverId != null))
             throw bad("Advance rentals are assigned on the pickup day.");
         if ("Quick".equals(type) && vehicleId == null) throw bad("Quick rentals require a vehicle.");
         if ("Active".equals(status) && vehicleId == null) throw bad("Active rentals require a vehicle.");
         if ("Active".equals(status) && !"Self-drive".equals(text(data.get(kind.equals("Corporate") ? "serviceMode" : "driverMode")))
                 && driverId == null) throw bad("Active rentals require a driver unless self-drive.");
-        if ("Active".equals(status) && pickup.toLocalDate().isAfter(LocalDate.now())) throw bad("Handover is only available on the pickup day.");
+        if ("Active".equals(status) && pickup.toLocalDate().isAfter(LocalDate.now(KSA))) throw bad("Handover is only available on the pickup day.");
         String mode = text(data.get(kind.equals("Corporate") ? "serviceMode" : "driverMode"));
         if (!(kind.equals("Corporate") ? Set.of("With driver", "Self-drive") : Set.of("Assigned", "Unassigned", "Self-drive")).contains(mode))
             throw bad("Select a valid driver arrangement.");
@@ -250,6 +258,7 @@ public class RentalService {
         if (vehicleId != null && !Set.of("Completed", "Cancelled").contains(status)) {
             Vehicle vehicle = vehicles.lockById(vehicleId).orElseThrow(() -> bad("Vehicle not found."));
             if (!Set.of("Available", "In Use").contains(vehicle.getStatus())) throw bad("Vehicle is unavailable.");
+            if (starting && "Active".equals(status)) requireReadyForHandover(vehicle);
             if ("Advance".equals(type) && !text(data.get("requestedType")).equals(vehicle.getType()))
                 throw bad("Select a vehicle of the requested type.");
             if ("Corporate".equals(kind) && integer(data.get("passengerCount"), 1, 1000) > vehicle.getSeats())
@@ -261,7 +270,7 @@ public class RentalService {
         }
         if (!Set.of("Cancelled", "Completed").contains(status) && (vehicleId != null || driverId != null)
                 && !rentals.conflicts(record.getId() == null ? -1 : record.getId(), vehicleId == null ? -1L : vehicleId,
-                        driverId == null ? -1L : driverId, pickup, returned, LocalDateTime.now()).isEmpty())
+                        driverId == null ? -1L : driverId, pickup, returned, LocalDateTime.now(KSA)).isEmpty())
             throw conflict("The vehicle or driver is already assigned during this period.");
         Map<String, Object> before = updating ? json.readValue(record.getPayload(), new TypeReference<LinkedHashMap<String, Object>>() {}) : Map.of();
         if (!updating || !equivalent(before.get("quoteSnapshot"), data.get("quoteSnapshot")))
@@ -374,6 +383,9 @@ public class RentalService {
         result.put("id", record.getId());
         result.put(record.getKind().equals("Corporate") ? "tripId" : "bookingId", record.getReference());
         result.put("status", record.getStatus());
+        result.put("pickupAt", record.getPickupAt().toString());
+        result.put("returnAt", record.getReturnAt().toString());
+        result.put("timeZone", "Asia/Riyadh");
         result.put("bookingType", record.getBookingType());
         result.put("vehicleId", record.getVehicleId());
         result.put("driverId", record.getDriverId());
@@ -384,7 +396,7 @@ public class RentalService {
         result.put(record.getKind().equals("Corporate") ? "companyId" : "customerId", record.getCustomerId());
         invoices.findForRental(record.getId()).ifPresent(invoice -> {
             result.put("invoiceId", invoice.getId());
-            if ("Individual".equals(record.getKind())) result.put("invoicedAmount", invoice.getTotalAmount());
+            if ("Individual".equals(record.getKind())) result.put("invoicedAmount", invoice.getTotalAmount().subtract(invoice.getCreditedAmount()));
         });
         return result;
     }
@@ -473,8 +485,8 @@ public class RentalService {
     }
     private void stampLifecycle(RentalRecord record, Map<String, Object> data) {
         if ("Active".equals(record.getStatus()) && text(data.get("handedOverAt")).isBlank())
-            data.put("handedOverAt", LocalDateTime.now().toString());
-        if ("Completed".equals(record.getStatus())) data.put("actualReturnAt", LocalDateTime.now().toString());
+            data.put("handedOverAt", LocalDateTime.now(KSA).toString());
+        if ("Completed".equals(record.getStatus())) data.put("actualReturnAt", LocalDateTime.now(KSA).toString());
     }
     private void syncResources(RentalRecord record) {
         if (record.getVehicleId() != null) {
@@ -494,8 +506,22 @@ public class RentalService {
         try { BigDecimal n = new BigDecimal(text(value)); if (n.stripTrailingZeros().scale() > 2 || n.abs().compareTo(new BigDecimal("999999999999.99")) > 0) throw bad("Invalid amount."); return n; }
         catch (NumberFormatException e) { throw bad("Invalid amount."); }
     }
+    private void requireReadyForHandover(Vehicle vehicle) {
+        if (!vehicle.isOnSite()) throw bad("Handover blocked: vehicle must be on-site.");
+        var docs = vehicleFiles.findByVehicleIdOrderByIdAsc(vehicle.getId()).stream().filter(f -> "DOCUMENT".equals(f.getKind())).toList();
+        var today = LocalDate.now(KSA);
+        if (VehicleCompliance.hasExpired(vehicle, docs, today))
+            throw bad("Handover blocked: a vehicle compliance expiry date has passed.");
+        for (String type : List.of("Istimara", "Insurance", "Fahas")) {
+            if (docs.stream().noneMatch(f -> type.equals(f.getDocumentType()) && f.getExpiryDate() != null && !f.getExpiryDate().isBefore(today)))
+                throw bad("Handover blocked: attach current Istimara, Insurance and Fahas documents.");
+        }
+    }
+
     private LocalDateTime dateTime(Object value) {
-        try { return LocalDateTime.parse(text(value)); }
+        try { String raw = text(value);
+            if (raw.endsWith("Z") || raw.matches(".*[+-]\\d{2}:\\d{2}$")) return OffsetDateTime.parse(raw).atZoneSameInstant(KSA).toLocalDateTime();
+            return LocalDateTime.parse(raw); }
         catch (Exception e) { throw bad("Enter a valid pickup and return date and time."); }
     }
     private ApiException bad(String message) { return new ApiException(HttpStatus.BAD_REQUEST, message); }

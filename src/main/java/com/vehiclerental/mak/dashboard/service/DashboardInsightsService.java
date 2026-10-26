@@ -68,10 +68,12 @@ public class DashboardInsightsService {
   if(permissions.contains("invoices.read")){
    var start=today.minusDays(days-1);var zone=ZoneId.of("Asia/Riyadh");
    var issued=sum("select coalesce(sum(total_amount),0) from invoices where status='Issued' and issued_at>=? and issued_at<?",java.sql.Timestamp.from(start.atStartOfDay(zone).toInstant()),java.sql.Timestamp.from(until.atZone(zone).toInstant()));
+   var credited=sum("select coalesce(sum(total_amount),0) from invoice_credit_notes where issued_at>=? and issued_at<?",java.sql.Timestamp.from(start.atStartOfDay(zone).toInstant()),java.sql.Timestamp.from(until.atZone(zone).toInstant()));
+   issued=issued.subtract(credited);
    var payments=sum("select coalesce(sum(case when p.kind='Refund' then -p.amount else p.amount end),0) from invoice_payments p join invoices i on i.id=p.invoice_id where i.status='Issued' and (p.method is null or p.method<>'Opening balance') and p.paid_on>=? and p.paid_on<=?",start,today);
    BigDecimal outstanding=BigDecimal.ZERO,overdue=BigDecimal.ZERO;
-   for(var row:jdbc.queryForList("select total_amount,paid_amount,payload from invoices where status='Issued' and total_amount>paid_amount")){
-    var balance=((BigDecimal)row.get("total_amount")).subtract((BigDecimal)row.get("paid_amount"));outstanding=outstanding.add(balance);String due=json.readTree((String)row.get("payload")).path("dueDate").asText();if(!due.isBlank() && LocalDate.parse(due).isBefore(today))overdue=overdue.add(balance);
+   for(var row:jdbc.queryForList("select total_amount,credited_amount,paid_amount,payload from invoices where status='Issued' and total_amount-credited_amount>paid_amount")){
+    var balance=((BigDecimal)row.get("total_amount")).subtract((BigDecimal)row.get("credited_amount")).subtract((BigDecimal)row.get("paid_amount"));outstanding=outstanding.add(balance);String due=json.readTree((String)row.get("payload")).path("dueDate").asText();if(!due.isBlank() && LocalDate.parse(due).isBefore(today))overdue=overdue.add(balance);
    }
    result.put("financial",Map.of("issuedValue",issued,"netCollections",payments,"outstandingBalance",outstanding,"overdueBalance",overdue,"currency","SAR"));
   }

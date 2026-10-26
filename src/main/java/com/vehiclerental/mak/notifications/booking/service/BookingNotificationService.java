@@ -17,18 +17,19 @@ import tools.jackson.databind.ObjectMapper;
 
 @Service
 public class BookingNotificationService {
+ private final com.vehiclerental.mak.auth.service.RoleService roles;
  private final JdbcTemplate jdbc;
  private final ObjectMapper json;
  private final EmailService emails;
  private final int pickupMinutes,confirmationMinutes,escalationMinutes;
  private final boolean emailEscalation;
  private static final ZoneId ZONE=ZoneId.of("Asia/Riyadh");
- public BookingNotificationService(JdbcTemplate jdbc,ObjectMapper json,EmailService emails,
+ public BookingNotificationService(JdbcTemplate jdbc,ObjectMapper json,EmailService emails,com.vehiclerental.mak.auth.service.RoleService roles,
   @Value("${app.notifications.pickup-minutes:60}") int pickupMinutes,
   @Value("${app.notifications.confirmation-minutes:120}") int confirmationMinutes,
   @Value("${app.notifications.escalation-minutes:15}") int escalationMinutes,
   @Value("${app.notifications.email-escalation:false}") boolean emailEscalation,@Value("${app.mail.enabled:false}") boolean mailEnabled){
-  this.jdbc=jdbc;this.json=json;this.emails=emails;this.pickupMinutes=Math.max(1,pickupMinutes);this.confirmationMinutes=Math.max(1,confirmationMinutes);this.escalationMinutes=Math.max(1,escalationMinutes);this.emailEscalation=emailEscalation && mailEnabled;
+  this.roles=roles;this.jdbc=jdbc;this.json=json;this.emails=emails;this.pickupMinutes=Math.max(1,pickupMinutes);this.confirmationMinutes=Math.max(1,confirmationMinutes);this.escalationMinutes=Math.max(1,escalationMinutes);this.emailEscalation=emailEscalation && mailEnabled;
  }
  private void lock(){jdbc.queryForList("select id from booking_notification_control where id=1 for update");}
  private Instant instant(Object value){if(value instanceof OffsetDateTime time)return time.toInstant();if(value instanceof Instant time)return time;return ((Timestamp)value).toInstant();}
@@ -55,8 +56,8 @@ public class BookingNotificationService {
   recipients(id,r.get("kind").toString(),supervisors);return id;
  }
  private void recipients(long alert,String kind,boolean supervisors){
-  for(var account:jdbc.queryForList("select id,role from auth_accounts where status='Active'")){
-   String role=account.get("role").toString();if(!Permissions.forRole(role).contains(module(kind)+".write") || (supervisors && !Set.of("Admin","Manager").contains(role)))continue;
+  for(var account:jdbc.queryForList("select id,role,custom_role_id from auth_accounts where status='Active'")){
+   String role=account.get("role").toString();if(!com.vehiclerental.mak.auth.security.RolePolicy.operates(roles.resolve(role,account.get("custom_role_id") instanceof Number n?n.longValue():null),module(kind)) || (supervisors && !Set.of("Admin","Manager").contains(role)))continue;
    long id=((Number)account.get("id")).longValue();
    if(jdbc.queryForObject("select count(*) from booking_alert_recipients where alert_id=? and account_id=?",Long.class,alert,id)==0){jdbc.update("insert into booking_alert_recipients(alert_id,account_id) values(?,?)",alert,id);changed(id);}
   }
@@ -132,7 +133,7 @@ public class BookingNotificationService {
   }
  }
  public long cursor(long account){return jdbc.queryForObject("select coalesce(max(id),0) from booking_notification_events where account_id=?",Long.class,account);}
- private List<String> kinds(Set<String> permissions){var kinds=new ArrayList<String>();if(permissions.contains("bookings.write"))kinds.add("Individual");if(permissions.contains("corporate-trips.write"))kinds.add("Corporate");return kinds;}
+ private List<String> kinds(Set<String> permissions){var kinds=new ArrayList<String>();if(com.vehiclerental.mak.auth.security.RolePolicy.operates(permissions,"bookings"))kinds.add("Individual");if(com.vehiclerental.mak.auth.security.RolePolicy.operates(permissions,"corporate-trips"))kinds.add("Corporate");return kinds;}
  @Transactional(readOnly=true)
  public Map<String,Object> list(long account,Set<String> permissions,String filter,String kind,String priority,String type,String from,String to,int page){
   var kinds=kinds(permissions);var args=new ArrayList<Object>();args.add(account);String where=" n.account_id=?";

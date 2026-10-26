@@ -30,7 +30,7 @@ import tools.jackson.databind.ObjectMapper;
 class EmployeeServiceTests {
  @Autowired EmployeeService employees;@Autowired EmployeeRepository repository;@Autowired EmployeeFileService files;
  @Autowired EmployeeSaveService saves;@Autowired EmployeeImportService imports;@Autowired ObjectMapper json;@Autowired WebApplicationContext context;
- @Autowired VendorRepository vendors;
+ @Autowired VendorRepository vendors; @Autowired com.vehiclerental.mak.auth.repository.AccountRepository accountRecords;
  @Autowired VendorService vendorService;
  private Map<String,Object> details(){String suffix=UUID.randomUUID().toString().substring(0,8);Map<String,Object> r=new LinkedHashMap<>(Map.of("employeeId","EMP-"+suffix,"name","Test Employee","phone","+96650"+Integer.toUnsignedString(suffix.hashCode()),"jobTitle","Fleet Coordinator","department","Fleet","category","Technical","employmentType","Full-time","status","Active","monthlySalary",6500));r.put("hourlyRate",25);r.put("dailyRate",200);r.put("nationality","Indian");r.put("homeAddress","Kochi, India");r.put("passportNumber","P-123");r.put("joinedOn","2025-01-15");return r;}
  private EmployeeRequest request(Map<String,Object> data){return json.convertValue(data,EmployeeRequest.class);}
@@ -55,8 +55,13 @@ class EmployeeServiceTests {
   var bad=details();var badFiles=new LinkedMultiValueMap<String,org.springframework.web.multipart.MultipartFile>();badFiles.add("doc",new MockMultipartFile("doc","bad.pdf","application/pdf","not a pdf".getBytes()));
   assertThrows(ApiException.class,()->saves.save(null,request(bad),attachments,badFiles));assertEquals(0,employees.list(String.valueOf(bad.get("employeeId")),null,null,0,20).getTotalElements());
  }
+ private org.springframework.mock.web.MockHttpSession administratorSession(){
+  var account=new com.vehiclerental.mak.auth.entity.Account();account.setName("Employee test admin");account.setEmail("employee-admin-"+UUID.randomUUID()+"@example.invalid");account.setPasswordHash("not-a-login-password");account.setRole("Admin");account.setStatus("Active");account.setCreatedAt(java.time.Instant.now());accountRecords.saveAndFlush(account);
+  var session=new org.springframework.mock.web.MockHttpSession();var principal=new com.vehiclerental.mak.auth.security.AccountPrincipal(account.getId(),account.getSessionVersion());
+  session.setAttribute("SPRING_SECURITY_CONTEXT",new org.springframework.security.core.context.SecurityContextImpl(org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated(principal,null,List.of())));return session;
+ }
  @Test void multipartEndpointsPersistFilesAndReturnReadableUrls()throws Exception{
-  var mvc=MockMvcBuilders.webAppContextSetup(context).build();var data=details();
+  var mvc=MockMvcBuilders.webAppContextSetup(context).defaultRequest(get("/").session(administratorSession()).with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf().asHeader())).apply(org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity()).build();var data=details();
   var record=new MockMultipartFile("record","","application/json",json.writeValueAsBytes(data));
   var attachments=new MockMultipartFile("attachments","","application/json",json.writeValueAsBytes(Map.of("documents",List.of(Map.of("type","Contract copy","uploadKey","doc")))));
   var response=mvc.perform(multipart("/api/employees/save").file(record).file(attachments).file(image("doc"))).andExpect(status().isOk()).andReturn();

@@ -14,6 +14,7 @@ public class InvoiceRecord {
     @Column(nullable = false, length = 20) private String status;
     @Column(nullable = false, precision = 14, scale = 2) private BigDecimal totalAmount;
     @Column(nullable = false, precision = 14, scale = 2) private BigDecimal paidAmount;
+    @Column(nullable = false, precision = 14, scale = 2) private BigDecimal creditedAmount = BigDecimal.ZERO;
     @Column(nullable = false, columnDefinition = "text") private String payload;
     @Column(nullable = false) private Instant createdAt;
     private Instant issuedAt;

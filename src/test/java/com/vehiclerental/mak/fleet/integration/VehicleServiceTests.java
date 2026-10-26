@@ -37,7 +37,7 @@ class VehicleServiceTests {
                 "D-12", "JT123456789012345", "Sedan", 5, "Automatic", "Hybrid", List.of("GPS", "Bluetooth"),
                 new BigDecimal("12.00"), new BigDecimal("72.00"), new BigDecimal("1800.00"), "USD",
                 "Owned", null, "Available", "Unassigned", true, true, false,
-                10000L, 25000L, 30000L, 10000L, 25000L, 40000L, 10000L, 30000L, 10000L);
+                10000L, 25000L, 30000L, 10000L, 25000L, 40000L, 10000L, 30000L, 10000L, null, null, null);
     }
 
     private VehicleResponse create() {
@@ -66,7 +66,7 @@ class VehicleServiceTests {
         VehicleRequest invalid = new VehicleRequest("Toyota", "Camry", "RNT-BAD", 2024, null, "VH-BAD", null, null,
                 "Sedan", 5, "Automatic", "Petrol", List.of(), null, BigDecimal.TEN, null, "USD",
                 "Vendor", null, "Available", null, true, true, false,
-                10000L, 35000L, 30000L, null, null, null, null, null, null);
+                10000L, 35000L, 30000L, null, null, null, null, null, null, null, null, null);
         assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, assertThrows(ApiException.class, () -> vehicles.create(invalid)).status());
         assertFalse(validator.validate(request("RNT-OK", "VH-OK")).size() > 0);
     }
@@ -82,10 +82,10 @@ class VehicleServiceTests {
         assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST,
                 assertThrows(ApiException.class, () -> files.uploadDocument(created.id(), "Insurance", null, image)).status());
         for (String type : List.of("Istimara", "Insurance", "Fahas")) {
-            files.uploadDocument(created.id(), type, LocalDate.now().plusYears(1), image);
+            files.uploadDocument(created.id(), type, LocalDate.now(java.time.ZoneId.of("Asia/Riyadh")).plusYears(1), image);
         }
         assertEquals("Complete", vehicles.get(created.id()).documents());
-        files.uploadDocument(created.id(), "Insurance", LocalDate.now().minusDays(1), image);
+        files.uploadDocument(created.id(), "Insurance", LocalDate.now(java.time.ZoneId.of("Asia/Riyadh")).minusDays(1), image);
         assertEquals("Expired", vehicles.get(created.id()).documents());
         assertEquals(3, vehicles.get(created.id()).documentRecords().size());
         assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST,

@@ -37,7 +37,7 @@ public class BookingNotificationStream {
    try{
     var account=accounts.active(c.principal);
     boolean expired=c.session.getMaxInactiveInterval()>0 && System.currentTimeMillis()-c.session.getLastAccessedTime()>c.session.getMaxInactiveInterval()*1000L;
-    if(account==null || expired || (!Permissions.forRole(account.getRole()).contains("bookings.write")&&!Permissions.forRole(account.getRole()).contains("corporate-trips.write"))){emitter.send(SseEmitter.event().name("expired").data("Session expired"));emitter.complete();connections.remove(emitter);continue;}
+    if(account==null || expired || (!com.vehiclerental.mak.auth.security.RolePolicy.operates(accounts.permissions(account),"bookings")&&!com.vehiclerental.mak.auth.security.RolePolicy.operates(accounts.permissions(account),"corporate-trips"))){emitter.send(SseEmitter.event().name("expired").data("Session expired"));emitter.complete();connections.remove(emitter);continue;}
     long cursor=notifications.cursor(c.principal.id());
     if(cursor!=c.cursor){emitter.send(SseEmitter.event().name("changed").id(Long.toString(cursor)).data(Map.of("cursor",cursor)));c.cursor=cursor;}
     else if(System.currentTimeMillis()-c.heartbeat>15000){emitter.send(SseEmitter.event().comment("heartbeat "+Instant.now()));c.heartbeat=System.currentTimeMillis();}

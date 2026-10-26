@@ -26,7 +26,7 @@ public class DashboardService {
   var attention=new ArrayList<Map<String,Object>>();
   if(!kinds.isEmpty())attention.add(Map.of("name","Pending bookings","value",count("select count(*) from rental_records where "+kindWhere+" and status='Pending'",kinds.toArray()),"page",individual?"Bookings":"Corporate Trips"));
   if(maintenance)attention.add(Map.of("name","Open maintenance","value",count("select count(*) from maintenance_jobs where status<>'Completed' and status<>'Cancelled'"),"page","Maintenance"));
-  if(finance)attention.add(Map.of("name","Outstanding invoices","value",count("select count(*) from invoices where status='Issued' and total_amount>paid_amount"),"page","Invoices"));
+  if(finance)attention.add(Map.of("name","Outstanding invoices","value",count("select count(*) from invoices where status='Issued' and total_amount-credited_amount>paid_amount"),"page","Invoices"));
   var activity=new ArrayList<Map<String,Object>>();var daily=new HashMap<LocalDate,long[]>();
   if(!kinds.isEmpty()){
    var periodArgs=new ArrayList<Object>(kinds);periodArgs.add(from.atStartOfDay());periodArgs.add(until);

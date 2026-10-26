@@ -15,6 +15,8 @@ import org.springframework.http.HttpStatus;
 /** Generates a server-owned, paginated PDF; no browser-supplied HTML is rendered. */
 @Service
 public class InvoicePdfService {
+    private final InvoiceTime time;
+    public InvoicePdfService(InvoiceTime time) { this.time = time; }
     private static final BigDecimal HUNDRED=new BigDecimal("100");
     public byte[] render(Map<String,Object> invoice) {
         try (PDDocument doc=new PDDocument(); ByteArrayOutputStream output=new ByteArrayOutputStream()) {
@@ -25,8 +27,8 @@ public class InvoicePdfService {
                 Canvas c=new Canvas(doc,font,s(invoice.get("invoiceNumber")),"Draft".equals(invoice.get("status")));
                 c.section("Invoice metadata");
                 c.pairs(new String[][]{{"Invoice #",s(invoice.get("invoiceNumber")).isBlank()?"DRAFT-"+invoice.get("id"):s(invoice.get("invoiceNumber"))},
-                    {"Issue date",s(invoice.get("issuedAt")).split("T")[0]},{"Due date",s(invoice.get("dueDate"))},
-                    {"Terms",s(invoice.get("paymentTerms"))},{"P.O. #",s(invoice.get("poNumber"))},
+                    {"Issue date (KSA)",time.day(s(invoice.get("issuedAt")))},{"Due date",s(invoice.get("dueDate"))},
+                    {"Terms",s(invoice.get("paymentTerms"))},{"Due date basis", "Terms".equals(invoice.get("dueDateMode"))?"Payment terms from issue date (KSA)":"Manual".equals(invoice.get("dueDateMode"))?"Manual override":"Saved due date"},{"Override reason",s(invoice.get("dueDateOverrideReason"))},{"P.O. #",s(invoice.get("poNumber"))},
                     {"Transaction type",s(invoice.get("transactionType"))}});
                 c.section("Seller and buyer details");
                 Map<String,Object> seller=map(invoice.get("issuer")), buyer=map(invoice.get("billTo"));
@@ -56,20 +58,40 @@ public class InvoicePdfService {
                 c.clearTable();c.ensure(170);c.section("Invoice totals");
                 BigDecimal total=taxable.add(taxTotal),paid=BigDecimal.ZERO;
                 for(var payment:rows(invoice.get("payments"))) paid=paid.add(n(payment.get("amount")).multiply("Refund".equals(payment.get("kind"))?BigDecimal.valueOf(-1):BigDecimal.ONE));
+                BigDecimal credited=n(invoice.get("creditedAmount")),adjusted=total.subtract(credited);
                 c.pairs(new String[][]{{"Total amount (SAR)",money(total)},{"Total taxable amount excluding VAT (SAR)",money(taxable)},
-                    {"Total VAT (SAR)",money(taxTotal)},{"Total amount due (SAR)",money(total)},{"Net amount received (SAR)",money(paid)},
-                    {"Balance due (SAR)",money(total.subtract(paid).max(BigDecimal.ZERO))}});
+                    {"Total VAT (SAR)",money(taxTotal)},{"Credit notes (SAR)",money(credited)},{"Total amount due (SAR)",money(adjusted)},{"Net amount received (SAR)",money(paid)},
+                    {"Balance due (SAR)",money(adjusted.subtract(paid).max(BigDecimal.ZERO))},{"Refund due (SAR)",money(paid.subtract(adjusted).max(BigDecimal.ZERO))}});
+                if(!rows(invoice.get("creditNotes")).isEmpty()){c.section("Linked credit notes");for(var credit:rows(invoice.get("creditNotes")))c.text(s(credit.get("number"))+" | "+s(credit.get("reason"))+" | SAR "+money(n(credit.get("total"))),10);}
                 c.section("Tax summary");c.tableHeader(new String[]{"Tax rate","Taxable amount (SAR)","Tax amount (SAR)"},new float[]{111,200,200});
                 for(var entry:taxes.entrySet()) c.row(new String[]{entry.getKey().stripTrailingZeros().toPlainString()+"%",money(entry.getValue()[0]),money(entry.getValue()[1])},new float[]{111,200,200},false);
                 c.row(new String[]{"Total",money(taxable),money(taxTotal)},new float[]{111,200,200},false);c.clearTable();
                 c.section("Notes / Message");c.text(s(invoice.get("notes")),10);
-                c.section("Payment details");c.text("Contact person: "+s(invoice.getOrDefault("paymentContact",buyer.get("contactName"))),10);
+                c.section("Payment details");c.text(s(invoice.get("paymentInstructions")),10);c.text("Contact person: "+s(invoice.getOrDefault("paymentContact",buyer.get("contactName"))),10);
                 c.ensure(170);c.section("Account details");Map<String,Object> account=map(invoice.get("account"));
                 c.pairs(new String[][]{{"Account name",s(account.get("accountName"))},{"Bank name",s(account.get("bankName"))},
                     {"Branch name",s(account.get("branchName"))},{"Account number",s(account.get("accountNumber"))},{"IBAN No.",s(account.get("iban"))}});
                 c.finish();doc.save(output);return output.toByteArray();
             }
         } catch(IOException e) { throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR,"Unable to generate the invoice PDF. Please retry."); }
+    }
+    public byte[] renderCreditNote(Map<String,Object> note) {
+        try (PDDocument doc=new PDDocument(); ByteArrayOutputStream output=new ByteArrayOutputStream();
+             var fontStream=PDType0Font.class.getResourceAsStream("/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
+            if(fontStream==null) throw new IOException("Credit note font unavailable");
+            PDFont font=PDType0Font.load(doc,fontStream);
+            Canvas c=new Canvas(doc,font,s(note.get("number")),false,"CREDIT NOTE");
+            c.section("Credit note details"); c.pairs(new String[][]{{"Credit note",s(note.get("number"))},{"Original invoice",s(note.get("invoiceNumber"))},{"Issued date (KSA)",time.day(s(note.get("issuedAt")))},{"Currency","SAR"}});
+            c.section("Seller and buyer"); Map<String,Object> seller=map(note.get("issuer")), buyer=map(note.get("billTo"));
+            c.pairs(new String[][]{{"Seller",s(seller.get("name"))},{"Seller address",party(seller,"street")},{"Seller VAT number",s(seller.get("taxNumber"))},{"Buyer",s(buyer.get("name"))},{"Buyer address",party(buyer,"street")},{"Buyer VAT number",s(buyer.get("taxNumber"))}});
+            c.section("Reason"); c.text(s(note.get("reason")),11);
+            float[] widths={251,80,80,100}; c.section("Credited original lines");
+            c.tableHeader(new String[]{"Original line / VAT rate","Net (SAR)","VAT (SAR)","Credit (SAR)"},widths);
+            for(var line:rows(note.get("lines"))) c.row(new String[]{s(line.get("description"))+" | VAT "+s(line.get("taxPercent"))+"%",money(n(line.get("net"))),money(n(line.get("tax"))),money(n(line.get("amount")))},widths,false);
+            c.section("Credit totals"); c.pairs(new String[][]{{"Net credit (SAR)",money(n(note.get("net")))},{"VAT credit (SAR)",money(n(note.get("tax")))},{"Total credit (SAR)",money(n(note.get("total")))}});
+            c.text("This credit reduces the original invoice amount. Any cash refund is recorded separately.",10);
+            c.finish(); doc.save(output); return output.toByteArray();
+        } catch(IOException e) { throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR,"Unable to generate the credit note PDF. Please retry."); }
     }
     private static String party(Map<String,Object> p,String key) {
         Object v=p.get(key); if(v==null && key.equals("street"))v=p.get("address");if(v==null && key.equals("otherId"))v=p.get("registrationNumber");return s(v);
@@ -81,14 +103,15 @@ public class InvoicePdfService {
     @SuppressWarnings("unchecked") private static java.util.List<Map<String,Object>> rows(Object v){return v instanceof java.util.List<?>?(java.util.List<Map<String,Object>>)v:java.util.List.of();}
 
     private static class Canvas {
-        final PDDocument doc;final PDFont font;final String reference;final boolean draft;
+        final PDDocument doc;final PDFont font;final String reference;final boolean draft;final String title;
         PDPageContentStream stream;float y;int page;String[] tableHeaders;float[] tableWidths;
-        Canvas(PDDocument doc,PDFont font,String reference,boolean draft)throws IOException{this.doc=doc;this.font=font;this.reference=reference;this.draft=draft;newPage();}
+        Canvas(PDDocument doc,PDFont font,String reference,boolean draft)throws IOException{this(doc,font,reference,draft,"INVOICE");}
+        Canvas(PDDocument doc,PDFont font,String reference,boolean draft,String title)throws IOException{this.doc=doc;this.font=font;this.reference=reference;this.draft=draft;this.title=title;newPage();}
         void newPage()throws IOException{
             if(stream!=null)stream.close();PDPage p=new PDPage(PDRectangle.A4);doc.addPage(p);page++;
             stream=new PDPageContentStream(doc,p);y=770;
             draw("RENTAL ADMIN",42,805,11,new Color(117,109,232));
-            draw(draft?"DRAFT INVOICE":"INVOICE",42,777,20,new Color(53,65,83));
+            draw(draft?"DRAFT INVOICE":title,42,777,20,new Color(53,65,83));
             draw(reference,370,795,10,new Color(53,65,83));
             stream.setStrokingColor(new Color(117,109,232));stream.moveTo(42,761);stream.lineTo(553,761);stream.stroke();y=742;
             draw("Generated by Rental Admin | SAR | Page "+page,42,25,8,new Color(120,130,145));

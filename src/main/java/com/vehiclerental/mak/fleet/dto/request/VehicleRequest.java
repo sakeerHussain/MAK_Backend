@@ -1,6 +1,7 @@
 package com.vehiclerental.mak.fleet.dto.request;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
@@ -19,7 +20,7 @@ public record VehicleRequest(
         @NotBlank @Size(max = 50) String vehicleId,
         @Size(max = 60) String doorNo,
         @Size(max = 100) String chassisNo,
-        @NotBlank @Pattern(regexp = "Sedan|SUV|Van|Electric|Luxury") String type,
+        @NotBlank @Pattern(regexp = "Sedan|SUV|Van|Bus|Electric|Luxury") String type,
         @NotNull @Min(1) @Max(60) Integer seats,
         @NotBlank @Pattern(regexp = "Automatic|Manual") String transmission,
         @NotBlank @Pattern(regexp = "Petrol|Diesel|Hybrid|Electric") String fuelType,
@@ -43,5 +44,8 @@ public record VehicleRequest(
         @Min(1) Long tyreIntervalKm,
         @Min(0) Long lastTyreKm,
         @Min(1) Long brakeIntervalKm,
-        @Min(0) Long lastBrakeKm
+        @Min(0) Long lastBrakeKm,
+        LocalDate registrationExpiryDate,
+        LocalDate insuranceExpiryDate,
+        LocalDate inspectionExpiryDate
 ) { }
