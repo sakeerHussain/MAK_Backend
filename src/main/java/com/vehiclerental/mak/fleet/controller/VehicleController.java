@@ -41,11 +41,14 @@ public class VehicleController {
     private final VehicleService vehicles;
     private final VehicleFileService files;
     private final VehicleImportService imports;
+    private final com.vehiclerental.mak.fleet.service.FleetUtilizationService utilization;
 
-    public VehicleController(VehicleService vehicles, VehicleFileService files, VehicleImportService imports) {
+    public VehicleController(VehicleService vehicles, VehicleFileService files, VehicleImportService imports,
+            com.vehiclerental.mak.fleet.service.FleetUtilizationService utilization) {
         this.vehicles = vehicles;
         this.files = files;
         this.imports = imports;
+        this.utilization = utilization;
     }
 
     @GetMapping
@@ -54,6 +57,12 @@ public class VehicleController {
             @RequestParam(required = false) Boolean onSite, @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return vehicles.list(search, status, type, onSite, page, size);
+    }
+
+    @GetMapping("/utilization")
+    public com.vehiclerental.mak.fleet.dto.response.FleetUtilizationResponse utilization(
+            @RequestParam(defaultValue="LAST_7_DAYS") com.vehiclerental.mak.fleet.service.FleetUtilizationService.Period period) {
+        return utilization.get(period);
     }
 
     @GetMapping("/summary")
@@ -108,9 +117,11 @@ public class VehicleController {
     }
 
     @GetMapping("/{id}/files/{fileId}")
-    public ResponseEntity<Resource> download(@PathVariable long id, @PathVariable long fileId) {
+    public ResponseEntity<Resource> download(@PathVariable long id, @PathVariable long fileId,
+            @RequestParam(defaultValue = "false") boolean download) {
         FileDownload file = files.download(id, fileId);
-        ContentDisposition disposition = (file.contentType().startsWith("image/") ? ContentDisposition.inline() : ContentDisposition.attachment())
+        boolean previewable = file.contentType().startsWith("image/") || "application/pdf".equals(file.contentType());
+        ContentDisposition disposition = (!download && previewable ? ContentDisposition.inline() : ContentDisposition.attachment())
                 .filename(file.name(), java.nio.charset.StandardCharsets.UTF_8).build();
         return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
                 .contentType(MediaType.parseMediaType(file.contentType())).body(file.resource());

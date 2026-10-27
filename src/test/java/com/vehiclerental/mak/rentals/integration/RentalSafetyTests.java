@@ -14,10 +14,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 @SpringBootTest
 class RentalSafetyTests {
  @Autowired RentalService rentals;
+ @Autowired com.vehiclerental.mak.rentals.repository.RentalRepository records;
  @Autowired VehicleRepository vehicles;
  @Autowired VehicleFileRepository files;
  Vehicle car(boolean onSite, boolean docs) {
-  var v=new Vehicle();String key=UUID.randomUUID().toString();v.setRegistration(key);v.setVehicleId(key);v.setMake("Toyota");v.setModel("Camry");v.setYear(2026);v.setType("Sedan");v.setSeats(5);v.setTransmission("Automatic");v.setFuelType("Petrol");v.setDailyRate(BigDecimal.valueOf(100));v.setRateCurrency("SAR");v.setOwnership("Owned");v.setStatus("Available");v.setOnSite(onSite);vehicles.saveAndFlush(v);if(docs)RentalReadyFixture.documents(files,v);return v;
+  var v=new Vehicle();String key=UUID.randomUUID().toString();v.setRegistration(key);v.setVehicleId(key);v.setMake("Toyota");v.setModel("Camry");v.setYear(2026);v.setType("Sedan");v.setSeats(5);v.setTransmission("Automatic");v.setFuelType("Petrol");v.setDailyRate(BigDecimal.valueOf(100));v.setRateCurrency("SAR");v.setOwnership("Owned");v.setListedForBooking(true);v.setStatus("Available");v.setOnSite(onSite);vehicles.saveAndFlush(v);if(docs)RentalReadyFixture.documents(files,v);return v;
  }
  Map<String,Object> request(Vehicle v,String status){
   var now=LocalDateTime.now(ZoneId.of("Asia/Riyadh")).minusMinutes(1);
@@ -60,4 +61,43 @@ class RentalSafetyTests {
   var data=request(car(true,true),"Confirmed");data.put("pickupAt","2026-10-25T10:00:00Z");data.put("returnAt","2026-10-26T10:00:00Z");
   var saved=rentals.create("Individual",data);assertTrue(saved.get("pickupAt").toString().startsWith("2026-10-25T13:00"));
  }
+
+ @Test void unlistedVehiclesRejectNewReservationsAndHandoversWithoutSideEffects(){
+  var v=car(true,true);v.setListedForBooking(false);vehicles.saveAndFlush(v);long before=records.count();
+  for(String status:List.of("Confirmed","Active")) {
+   var error=assertThrows(ApiException.class,()->rentals.create("Individual",request(v,status)));
+   assertTrue(error.getMessage().contains("not listed for booking"));
+  }
+  assertEquals(before,records.count());assertEquals("Available",vehicles.findById(v.getId()).orElseThrow().getStatus());
+ }
+ @Test void unlistedReassignmentFailsThroughBothUpdateAndAssignmentPaths(){
+  var original=car(true,true);long booking=id(rentals.create("Individual",request(original,"Confirmed")));
+  var hidden=car(true,true);hidden.setListedForBooking(false);vehicles.saveAndFlush(hidden);
+  var error=assertThrows(ApiException.class,()->rentals.update("Individual",booking,Map.of("vehicleId",hidden.getId())));
+  assertTrue(error.getMessage().contains("not listed for booking"));
+  assertThrows(ApiException.class,()->rentals.assign("Individual",booking,Map.of("vehicleId",hidden.getId(),"handedOver",true)));
+  assertEquals(original.getId(),((Number)rentals.get("Individual",booking).get("vehicleId")).longValue());
+  assertEquals("Confirmed",rentals.get("Individual",booking).get("status"));
+  assertEquals("Available",vehicles.findById(hidden.getId()).orElseThrow().getStatus());
+ }
+ @Test void unlistingDoesNotDisruptAnExistingAssignmentHandoverOrReturn(){
+  var v=car(true,true);long booking=id(rentals.create("Individual",request(v,"Confirmed")));
+  v.setListedForBooking(false);vehicles.saveAndFlush(v);
+  assertEquals("Retain assignment",rentals.update("Individual",booking,Map.of("notes","Retain assignment")).get("notes"));
+  assertEquals("Confirmed",rentals.assign("Individual",booking,Map.of("vehicleId",v.getId())).get("status"));
+  assertEquals("Active",rentals.transition("Individual",booking,"Active",Map.of()).get("status"));
+  assertEquals("Completed",rentals.transition("Individual",booking,"Completed",Map.of()).get("status"));
+  assertFalse(vehicles.findById(v.getId()).orElseThrow().isListedForBooking());
+ }
+ @Test void unassignedAdvanceBookingCannotAcquireAnUnlistedVehicle(){
+  var hidden=car(true,true);hidden.setListedForBooking(false);vehicles.saveAndFlush(hidden);
+  var data=request(hidden,"Confirmed");data.put("bookingType","Advance");data.remove("vehicleId");
+  var tomorrow=LocalDateTime.now(ZoneId.of("Asia/Riyadh")).plusDays(1);data.put("pickupAt",tomorrow.toString());data.put("returnAt",tomorrow.plusDays(1).toString());
+  long booking=id(rentals.create("Individual",data));var record=records.findById(booking).orElseThrow();
+  record.setPickupAt(LocalDateTime.now(ZoneId.of("Asia/Riyadh")).minusMinutes(1));records.saveAndFlush(record);
+  var error=assertThrows(ApiException.class,()->rentals.assign("Individual",booking,Map.of("vehicleId",hidden.getId())));
+  assertTrue(error.getMessage().contains("not listed for booking"));
+  assertNull(rentals.get("Individual",booking).get("vehicleId"));
+ }
+
 }

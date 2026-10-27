@@ -36,6 +36,8 @@ class RbacEnforcementTests {
  @Autowired RoleService roles; @Autowired AccountService service; @Autowired AccountRepository accounts;
  @Autowired AuthControlRepository controls; @Autowired AuthAuditRepository audits; @Autowired InvitationRepository invitations;
  @Autowired WebApplicationContext context; @Autowired InvoiceService invoices; @Autowired RentalRepository rentals; @Autowired ObjectMapper json; @Autowired com.vehiclerental.mak.invoices.repository.InvoiceRepository invoiceRecords;
+ @Autowired com.vehiclerental.mak.fleet.repository.VehicleRepository fleetVehicles;
+ @Autowired com.vehiclerental.mak.fleet.service.VehicleFileService fleetFiles;
  Account admin; MockMvc mvc;
  final String[] modules={"fleet","drivers","employees","vendors","customers","bookings","corporate-trips","maintenance","inspections","invoices"};
  final String[] resources={"vehicles","drivers","employees","vendors","customers","bookings","corporate-trips","maintenance","inspections","invoices"};
@@ -158,5 +160,57 @@ class RbacEnforcementTests {
    assertThrows(ApiException.class,()->roles.save(null,new HashMap<>(Map.of("name","Unsupported "+UUID.randomUUID(),"permissions",List.of(module+".read",module+".archive"))),admin.getId()));
   }
   for(String module:List.of("fleet","drivers","employees","vendors","invoices"))assertTrue(RolePolicy.catalog().contains(module+".archive"));
+ }
+
+ @Test void fleetDocumentsOpenInlineOrDownloadWithTheSameReadPermission()throws Exception{
+  var vehicle=new com.vehiclerental.mak.fleet.entity.Vehicle();String key=UUID.randomUUID().toString();
+  vehicle.setRegistration("PDF-"+key);vehicle.setVehicleId("PDF-"+key);vehicle.setMake("QA");vehicle.setModel("File access");
+  vehicle.setYear(2026);vehicle.setType("Sedan");vehicle.setSeats(5);vehicle.setTransmission("Automatic");vehicle.setFuelType("Petrol");
+  vehicle.setDailyRate(BigDecimal.TEN);vehicle.setRateCurrency("SAR");vehicle.setOwnership("Owned");vehicle.setStatus("Inactive");
+  fleetVehicles.saveAndFlush(vehicle);
+  String filename="Istimara café 2026.pdf";byte[] pdf="%PDF-1.7\nQA isolated file fixture".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+  var document=fleetFiles.uploadDocument(vehicle.getId(),"Others",null,new org.springframework.mock.web.MockMultipartFile("file",filename,"application/pdf",pdf));
+  var reader=session(custom("fleet.read"));var unrelated=session(custom("employees.read"));
+  for(boolean download:List.of(false,true)){
+   String path=document.url()+(download?"?download=true":"");
+   var response=mvc.perform(get(path).session(reader)).andReturn().getResponse();
+   assertEquals(200,response.getStatus());assertEquals("application/pdf",response.getContentType());assertArrayEquals(pdf,response.getContentAsByteArray());
+   var disposition=org.springframework.http.ContentDisposition.parse(response.getHeader("Content-Disposition"));
+   assertEquals(download?"attachment":"inline",disposition.getType());assertEquals(filename,disposition.getFilename());
+   assertEquals(401,mvc.perform(get(path)).andReturn().getResponse().getStatus());
+   assertEquals(403,mvc.perform(get(path).session(unrelated)).andReturn().getResponse().getStatus());
+   assertEquals(404,mvc.perform(get("/api/vehicles/999999/files/"+document.id()).param("download",String.valueOf(download)).session(reader)).andReturn().getResponse().getStatus());
+  }
+  byte[] png={(byte)137,80,78,71,13,10,26,10,1,2};
+  var image=fleetFiles.uploadImage(vehicle.getId(),new org.springframework.mock.web.MockMultipartFile("file","car.png","image/png",png));
+  for(boolean download:List.of(false,true)){
+   var response=mvc.perform(get(image.url()).param("download",String.valueOf(download)).session(reader)).andReturn().getResponse();
+   assertEquals(200,response.getStatus());assertEquals("image/png",response.getContentType());assertArrayEquals(png,response.getContentAsByteArray());
+   assertEquals(download?"attachment":"inline",org.springframework.http.ContentDisposition.parse(response.getHeader("Content-Disposition")).getType());
+  }
+ }
+
+ @Test void fleetUtilizationIsAnAggregateProtectedByFleetRead()throws Exception{
+  var reader=session(custom("fleet.read"));var unrelated=session(custom("bookings.read"));
+  for(String period:List.of("LAST_7_DAYS","LAST_30_DAYS","THIS_MONTH")){
+   var response=mvc.perform(get("/api/vehicles/utilization").param("period",period).session(reader)).andReturn().getResponse();
+   assertEquals(200,response.getStatus());var data=json.readTree(response.getContentAsString());
+   assertEquals(period,data.path("period").asText());assertEquals("Asia/Riyadh",data.path("timeZone").asText());
+   assertTrue(data.has("fleetSize"));assertTrue(data.has("rentedSeconds"));assertFalse(data.has("rentals"));assertFalse(data.has("customerName"));
+  }
+  assertEquals(401,mvc.perform(get("/api/vehicles/utilization")).andReturn().getResponse().getStatus());
+  assertEquals(403,mvc.perform(get("/api/vehicles/utilization").session(unrelated)).andReturn().getResponse().getStatus());
+  assertEquals(400,mvc.perform(get("/api/vehicles/utilization").param("period","not-a-period").session(reader)).andReturn().getResponse().getStatus());
+ }
+ @Test void utilizationQueryIncludesBothRentalKindsButNotUnassignedRecords(){
+  var vehicle=new com.vehiclerental.mak.fleet.entity.Vehicle();String key=UUID.randomUUID().toString();
+  vehicle.setRegistration("USE-"+key);vehicle.setVehicleId("USE-"+key);vehicle.setMake("QA");vehicle.setModel("Utilization");vehicle.setYear(2026);vehicle.setType("Bus");vehicle.setSeats(35);vehicle.setTransmission("Manual");vehicle.setFuelType("Diesel");vehicle.setDailyRate(BigDecimal.TEN);vehicle.setRateCurrency("SAR");vehicle.setOwnership("Owned");vehicle.setStatus("Inactive");fleetVehicles.saveAndFlush(vehicle);
+  for(String kind:List.of("Individual","Corporate"))for(String status:List.of("Active","Completed","Pending","Confirmed","Cancelled")){
+   var row=new RentalRecord();row.setReference("USE-"+UUID.randomUUID());row.setKind(kind);row.setBookingType("Quick");row.setStatus(status);row.setVehicleId(vehicle.getId());row.setPickupAt(LocalDateTime.now().minusDays(1));row.setReturnAt(LocalDateTime.now());row.setTotalAmount(BigDecimal.TEN);row.setReceivedAmount(BigDecimal.ZERO);row.setRefundedAmount(BigDecimal.ZERO);row.setPayload("{}");row.setCreatedAt(Instant.now());rentals.saveAndFlush(row);
+  }
+  var found=rentals.utilizationSources().stream().filter(row->vehicle.getId().equals(row.vehicleId())).toList();
+  assertEquals(4,found.size());assertTrue(found.stream().allMatch(row->Set.of("Active","Completed").contains(row.status())));
+  var orphan=new RentalRecord();orphan.setReference("USE-"+UUID.randomUUID());orphan.setKind("Individual");orphan.setBookingType("Quick");orphan.setStatus("Active");orphan.setVehicleId(null);orphan.setPickupAt(LocalDateTime.now().minusDays(1));orphan.setReturnAt(LocalDateTime.now());orphan.setTotalAmount(BigDecimal.TEN);orphan.setReceivedAmount(BigDecimal.ZERO);orphan.setRefundedAmount(BigDecimal.ZERO);orphan.setPayload("{}");orphan.setCreatedAt(Instant.now());rentals.saveAndFlush(orphan);
+  assertFalse(rentals.utilizationSources().stream().anyMatch(row->row.vehicleId()==null));
  }
 }

@@ -77,6 +77,11 @@ public class RentalService {
         RentalRecord record = new RentalRecord();
         record.setKind(kind); record.setCreatedAt(Instant.now());
         apply(record, request, false, true);
+        request.remove("assignmentAlertReviewedAt");
+        if (!text(request.get("assignmentAlertAt")).isBlank()) {
+            request.put("assignmentAlertReviewedForPickup", record.getPickupAt().toString());
+            request.put("assignmentAlertReviewedAt", Instant.now().toString());
+        } else request.remove("assignmentAlertReviewedForPickup");
         stampLifecycle(record, request);
         rentals.saveAndFlush(record);
         record.setReference((kind.equals("Corporate") ? "CT-" : "BK-") + (kind.equals("Corporate") ? 3000 + record.getId() : 2000 + record.getId()));
@@ -105,6 +110,19 @@ public class RentalService {
             throw conflict("Completed, cancelled, or invoiced rentals cannot be edited.");
         Map<String, Object> current = response(record);
         Map<String, Object> merged = merge(current, request);
+        LocalDateTime nextPickup = dateTime(merged.get("pickupAt"));
+        boolean pickupChanged = !record.getPickupAt().equals(nextPickup);
+        if (pickupChanged && (text(request.get("assignmentAlertAt")).isBlank()
+                || text(request.get("assignmentAlertReviewedForPickup")).isBlank()
+                || !dateTime(request.get("assignmentAlertReviewedForPickup")).equals(nextPickup)))
+            throw bad("Pickup changed. Review the Assignment alert date & time in KSA and confirm the review before saving.");
+        // Review metadata is server owned; a reschedule must explicitly acknowledge the new pickup.
+        merged.put("assignmentAlertReviewedAt", current.getOrDefault("assignmentAlertReviewedAt", ""));
+        merged.put("assignmentAlertReviewedForPickup", current.getOrDefault("assignmentAlertReviewedForPickup", ""));
+        if (pickupChanged || !text(current.get("assignmentAlertAt")).equals(text(merged.get("assignmentAlertAt")))) {
+            merged.put("assignmentAlertReviewedForPickup", nextPickup.toString());
+            merged.put("assignmentAlertReviewedAt", Instant.now().toString());
+        }
         merged.put("receivedAmount", record.getReceivedAmount()); merged.put("refundedAmount", record.getRefundedAmount());
         merged.put("handedOverAt", current.getOrDefault("handedOverAt", ""));
         merged.remove("actualReturnAt");
@@ -159,8 +177,9 @@ public class RentalService {
     public Map<String, Object> assign(String kind, long id, Map<String, Object> changes) {
         RentalRecord record = requireLocked(kind, id);
         if (!"Confirmed".equals(record.getStatus())) throw conflict("Only confirmed rentals can be assigned.");
-        if (record.getPickupAt().toLocalDate().isAfter(LocalDate.now(KSA))) throw bad("Assign advance rentals on the pickup day.");
         Map<String, Object> merged = response(record);
+        if (!assignmentWindowOpen(record.getPickupAt(), merged))
+            throw bad("Assignment is available from the saved Assignment alert time or on the pickup day (KSA).");
         for (String key : List.of("vehicleId", "driverId", "driverMode"))
             if (changes.containsKey(key)) merged.put(key, changes.get(key));
         merged.put("status", Boolean.TRUE.equals(changes.get("handedOver")) ? "Active" : "Confirmed");
@@ -211,6 +230,13 @@ public class RentalService {
         LocalDateTime pickup = dateTime(data.get("pickupAt"));
         LocalDateTime returned = dateTime(data.get("returnAt"));
         data.put("pickupAt", pickup.toString()); data.put("returnAt", returned.toString());
+        if (data.containsKey("assignmentAlertAt")) {
+            LocalDateTime alert;
+            try { alert = dateTime(data.get("assignmentAlertAt")); }
+            catch (ApiException e) { throw bad("Enter a valid Assignment alert date & time in KSA."); }
+            if (alert.isAfter(pickup)) throw bad("Assignment alert must be at or before pickup (KSA).");
+            data.put("assignmentAlertAt", alert.toString());
+        }
         if (!returned.isAfter(pickup)) throw bad("Return must be after pickup.");
         if ("Advance".equals(type) && !updating && !pickup.isAfter(LocalDateTime.now(KSA)))
             throw bad("Advance pickup must be in the future.");
@@ -242,8 +268,9 @@ public class RentalService {
         Long driverId = numberId(data.get("driverId"));
         if ("Advance".equals(type) && !updating && (vehicleId != null || driverId != null))
             throw bad("Advance rentals are assigned on the pickup day.");
-        if ("Advance".equals(type) && pickup.toLocalDate().isAfter(LocalDate.now(KSA)) && (vehicleId != null || driverId != null))
-            throw bad("Advance rentals are assigned on the pickup day.");
+        if ("Advance".equals(type) && !assignmentWindowOpen(pickup, data) && (vehicleId != null || driverId != null)
+                && (!updating || !java.util.Objects.equals(record.getVehicleId(), vehicleId) || !java.util.Objects.equals(record.getDriverId(), driverId)))
+            throw bad("Assignment is available from the saved Assignment alert time or on the pickup day (KSA).");
         if ("Quick".equals(type) && vehicleId == null) throw bad("Quick rentals require a vehicle.");
         if ("Active".equals(status) && vehicleId == null) throw bad("Active rentals require a vehicle.");
         if ("Active".equals(status) && !"Self-drive".equals(text(data.get(kind.equals("Corporate") ? "serviceMode" : "driverMode")))
@@ -257,6 +284,9 @@ public class RentalService {
         if ("Quick".equals(type) && "With driver".equals(mode) && driverId == null) throw bad("Quick trips require a driver.");
         if (vehicleId != null && !Set.of("Completed", "Cancelled").contains(status)) {
             Vehicle vehicle = vehicles.lockById(vehicleId).orElseThrow(() -> bad("Vehicle not found."));
+            // Unlisting prevents new reservations/reassignments without disrupting existing rentals.
+            if (!vehicle.isListedForBooking() && !(updating && java.util.Objects.equals(record.getVehicleId(), vehicleId)))
+                throw bad("Vehicle is not listed for booking. Enable Listed for Booking in Fleet before making a new assignment.");
             if (!Set.of("Available", "In Use").contains(vehicle.getStatus())) throw bad("Vehicle is unavailable.");
             if (starting && "Active".equals(status)) requireReadyForHandover(vehicle);
             if ("Advance".equals(type) && !text(data.get("requestedType")).equals(vehicle.getType()))
@@ -518,6 +548,11 @@ public class RentalService {
         }
     }
 
+    private boolean assignmentWindowOpen(LocalDateTime pickup, Map<String, Object> data) {
+        if (!pickup.toLocalDate().isAfter(LocalDate.now(KSA))) return true;
+        String alert = text(data.get("assignmentAlertAt"));
+        return !alert.isBlank() && !dateTime(alert).isAfter(LocalDateTime.now(KSA));
+    }
     private LocalDateTime dateTime(Object value) {
         try { String raw = text(value);
             if (raw.endsWith("Z") || raw.matches(".*[+-]\\d{2}:\\d{2}$")) return OffsetDateTime.parse(raw).atZoneSameInstant(KSA).toLocalDateTime();

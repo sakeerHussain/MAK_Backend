@@ -29,10 +29,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class EmployeeService {
     private final EmployeeRepository employees;
     private final EmployeeFileRepository files;
+    private final com.vehiclerental.mak.payroll.PayrollService payroll;
 
-    public EmployeeService(EmployeeRepository employees, EmployeeFileRepository files) {
+    public EmployeeService(EmployeeRepository employees, EmployeeFileRepository files, com.vehiclerental.mak.payroll.PayrollService payroll) {
         this.employees = employees;
         this.files = files;
+        this.payroll = payroll;
     }
 
     @Transactional(readOnly = true)
@@ -90,6 +92,7 @@ public class EmployeeService {
 
     @Transactional
     public void archive(long id) {
+        payroll.guardStaffArchive("EMPLOYEE", id);
         Employee employee = requireLocked(id);
         if (employee.getPayrollCount() > 0) {
             throw new ApiException(HttpStatus.CONFLICT, "Employee has payroll history. Deactivate instead.");

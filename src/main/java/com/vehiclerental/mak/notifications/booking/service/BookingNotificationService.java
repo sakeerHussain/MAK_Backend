@@ -41,23 +41,37 @@ public class BookingNotificationService {
   var payload=json.readTree(rental.get("payload").toString());var result=new LinkedHashMap<String,Object>();
   result.put("reference",rental.get("reference"));result.put("customer",payload.path("Corporate".equals(rental.get("kind"))?"companyName":"customerName").asText("Customer"));
   result.put("pickupAt",local(rental.get("pickup_at")).toString());result.put("returnAt",local(rental.get("return_at")).toString());
+  result.put("assignmentAlertAt",payload.path("assignmentAlertAt").asText(""));
   result.put("pickupLocation",payload.path("pickupLocation").asText());result.put("vehicleAssigned",rental.get("vehicle_id")!=null);
   boolean self="Self-drive".equals(payload.path("Corporate".equals(rental.get("kind"))?"serviceMode":"driverMode").asText());
   result.put("driver",self?"Self-drive":rental.get("driver_id")==null?"Unassigned":"Assigned");return result;
  }
+ private LocalDateTime assignmentAt(Map<String,Object> r){
+  String value=json.readTree(r.get("payload").toString()).path("assignmentAlertAt").asText("");
+  if(value.isBlank())return null;
+  try{return LocalDateTime.parse(value);}catch(java.time.format.DateTimeParseException e){return null;}
+ }
  private boolean missing(Map<String,Object> r){var s=snapshot(r);return !Boolean.TRUE.equals(s.get("vehicleAssigned")) || "Unassigned".equals(s.get("driver"));}
  private long add(Map<String,Object> r,String key,String type,String priority,String title,boolean actionable,boolean supervisors){
-  var existing=jdbc.queryForList("select id from booking_alerts where alert_key=?",key);
+  var existing=jdbc.queryForList("select id from booking_alerts where condition_key=? and resolved_at is null",key);
   long id;
   if(existing.isEmpty()){
-   jdbc.update("insert into booking_alerts(rental_id,kind,alert_key,type,priority,title,snapshot,actionable,created_at) values(?,?,?,?,?,?,?,?,?)",r.get("id"),r.get("kind"),key,type,priority,title,json.writeValueAsString(snapshot(r)),actionable,stamp());
-   id=jdbc.queryForObject("select id from booking_alerts where alert_key=?",Long.class,key);
-  }else id=((Number)existing.get(0).get("id")).longValue();
+   // All callers hold booking_notification_control: an unresolved condition deduplicates,
+   // while a resolved occurrence keeps its history and gets a fresh recipient lifecycle.
+   String occurrenceKey=key+":"+UUID.randomUUID();
+   jdbc.update("insert into booking_alerts(rental_id,kind,alert_key,condition_key,type,priority,title,snapshot,actionable,created_at) values(?,?,?,?,?,?,?,?,?,?)",r.get("id"),r.get("kind"),occurrenceKey,key,type,priority,title,json.writeValueAsString(snapshot(r)),actionable,stamp());
+   id=jdbc.queryForObject("select id from booking_alerts where alert_key=?",Long.class,occurrenceKey);
+  }else {
+   id=((Number)existing.get(0).get("id")).longValue();
+   if("Assignment".equals(type) && !title.equals(jdbc.queryForObject("select title from booking_alerts where id=?",String.class,id))){
+    jdbc.update("update booking_alerts set title=? where id=?",title,id);signalRecipients(id);
+   }
+  }
   recipients(id,r.get("kind").toString(),supervisors);return id;
  }
  private void recipients(long alert,String kind,boolean supervisors){
   for(var account:jdbc.queryForList("select id,role,custom_role_id from auth_accounts where status='Active'")){
-   String role=account.get("role").toString();if(!com.vehiclerental.mak.auth.security.RolePolicy.operates(roles.resolve(role,account.get("custom_role_id") instanceof Number n?n.longValue():null),module(kind)) || (supervisors && !Set.of("Admin","Manager").contains(role)))continue;
+   String role=account.get("role").toString();if(!BookingNotificationAudience.eligible(roles,kind,role,account.get("custom_role_id") instanceof Number n?n.longValue():null,supervisors))continue;
    long id=((Number)account.get("id")).longValue();
    if(jdbc.queryForObject("select count(*) from booking_alert_recipients where alert_id=? and account_id=?",Long.class,alert,id)==0){jdbc.update("insert into booking_alert_recipients(alert_id,account_id) values(?,?)",alert,id);changed(id);}
   }
@@ -67,7 +81,7 @@ public class BookingNotificationService {
  @Transactional
  public void bookingChanged(RentalRecord record,String type){
   lock();var r=rental(record.getId());String title=switch(type){case "Created"->"New booking";case "Cancelled"->"Booking cancelled";case "Rescheduled"->"Booking rescheduled";case "Assigned"->"Assignment updated";default->"Booking status updated";};
-  String priority=Set.of("Cancelled","Rescheduled").contains(type)?"Action required":"Information";
+  String priority="Information";
   add(r,"event:"+UUID.randomUUID(),type,priority,title,false,false);
   evaluate(r,LocalDateTime.now(ZONE));
  }
@@ -92,8 +106,11 @@ public class BookingNotificationService {
  private void evaluate(Map<String,Object> r,LocalDateTime now){
   String status=r.get("status").toString();var pickup=local(r.get("pickup_at"));var end=local(r.get("return_at"));String base=r.get("id")+":"+pickup;
   if("Pending".equals(status) && !pickup.isAfter(now.plusMinutes(confirmationMinutes)))add(r,base+":confirmation","Confirmation","Action required","Booking needs confirmation",true,false);
+  var assignment=assignmentAt(r);
+  if(assignment!=null && Set.of("Pending","Confirmed").contains(status) && missing(r) && !assignment.isAfter(now))
+   add(r,base+":assignment:manual:"+assignment,"Assignment","Critical",status.equals("Pending")?"Confirm booking and assign vehicle / driver":"Vehicle / driver assignment due",true,false);
   if("Confirmed".equals(status)){
-   if("Advance".equals(r.get("booking_type")) && missing(r) && !pickup.toLocalDate().isAfter(now.toLocalDate().plusDays(1))){
+   if(assignment==null && "Advance".equals(r.get("booking_type")) && missing(r) && !pickup.toLocalDate().isAfter(now.toLocalDate().plusDays(1))){
     String stage=pickup.isAfter(now.plusMinutes(pickupMinutes))?pickup.toLocalDate().equals(now.toLocalDate())?"today":"tomorrow":"urgent";
     add(r,base+":assignment:"+stage,"Assignment",stage.equals("urgent")?"Critical":"Action required",stage.equals("tomorrow")?"Plan tomorrow's assignment (assign on trip day)":"Vehicle / driver assignment needed",true,false);
    }
@@ -109,15 +126,18 @@ public class BookingNotificationService {
  private boolean valid(Map<String,Object> a,Map<String,Object> r,LocalDateTime now){
   String type=a.get("type").toString(),status=r.get("status").toString();
   if(type.equals("Escalation")){
-   long source=Long.parseLong(a.get("alert_key").toString().substring(11));var original=jdbc.queryForMap("select * from booking_alerts where id=?",source);
+   long source=Long.parseLong(a.get("condition_key").toString().substring(11));var original=jdbc.queryForMap("select * from booking_alerts where id=?",source);
    return original.get("resolved_at")==null && jdbc.queryForObject("select count(*) from booking_alert_recipients where alert_id=? and acknowledged_at is not null",Long.class,source)==0 && valid(original,r,now);
   }
   var old=json.readTree(a.get("snapshot").toString());
   if(!old.path(type.equals("Overdue return")?"returnAt":"pickupAt").asText().equals(local(r.get(type.equals("Overdue return")?"return_at":"pickup_at")).toString()))return false;
   return switch(type){
    case "Confirmation" -> status.equals("Pending");
-   case "Assignment" -> status.equals("Confirmed") && "Advance".equals(r.get("booking_type")) && missing(r)
-     && (a.get("alert_key").toString().endsWith(":urgent") || (a.get("alert_key").toString().endsWith(":today") ? local(r.get("pickup_at")).isAfter(now.plusMinutes(pickupMinutes)) : local(r.get("pickup_at")).toLocalDate().isAfter(now.toLocalDate())));
+   case "Assignment" -> assignmentAt(r)!=null
+     ? Set.of("Pending","Confirmed").contains(status) && missing(r) && !assignmentAt(r).isAfter(now)
+       && a.get("condition_key").toString().equals(r.get("id")+":"+local(r.get("pickup_at"))+":assignment:manual:"+assignmentAt(r))
+     : !a.get("condition_key").toString().contains(":assignment:manual:") && status.equals("Confirmed") && "Advance".equals(r.get("booking_type")) && missing(r)
+     && (a.get("condition_key").toString().endsWith(":urgent") || (a.get("condition_key").toString().endsWith(":today") ? local(r.get("pickup_at")).isAfter(now.plusMinutes(pickupMinutes)) : local(r.get("pickup_at")).toLocalDate().isAfter(now.toLocalDate())));
    case "Pickup" -> status.equals("Confirmed") && local(r.get("pickup_at")).isAfter(now);
    case "Missed handover" -> status.equals("Confirmed") && !local(r.get("pickup_at")).isAfter(now);
    case "Overdue return" -> status.equals("Active") && !local(r.get("return_at")).isAfter(now);
@@ -127,7 +147,8 @@ public class BookingNotificationService {
  private void resolve(long id){jdbc.update("update booking_alerts set resolved_at=? where id=? and resolved_at is null",stamp(),id);signalRecipients(id);}
  private void signalRecipients(long id){for(var row:jdbc.queryForList("select account_id from booking_alert_recipients where alert_id=?",id))changed(((Number)row.get("account_id")).longValue());}
  private void queueEscalation(long id,Map<String,Object> r,String title){
-  for(var row:jdbc.queryForList("select n.account_id,a.email from booking_alert_recipients n join auth_accounts a on a.id=n.account_id where n.alert_id=? and n.email_queued=false",id)){
+  for(var row:jdbc.queryForList("select n.account_id,a.email,a.role,a.custom_role_id from booking_alert_recipients n join auth_accounts a on a.id=n.account_id where n.alert_id=? and n.email_queued=false and a.status='Active'",id)){
+   if(!BookingNotificationAudience.eligible(roles,r.get("kind").toString(),row.get("role").toString(),row.get("custom_role_id") instanceof Number n?n.longValue():null,true))continue;
    emails.bookingEscalation(id,row.get("email").toString(),r.get("reference").toString(),title);
    jdbc.update("update booking_alert_recipients set email_queued=true where alert_id=? and account_id=?",id,row.get("account_id"));
   }
@@ -148,7 +169,7 @@ public class BookingNotificationService {
   String join=" from booking_alerts a join booking_alert_recipients n on n.alert_id=a.id where "+where;
   long total=jdbc.queryForObject("select count(*)"+join,Long.class,args.toArray());
   args.add(25);args.add(Math.max(0,page)*25);
-  var rows=jdbc.queryForList("select a.*,n.read_at,n.acknowledged_at"+join+" order by case when a.resolved_at is null and a.actionable=true then 0 else 1 end,case a.priority when 'Critical' then 0 when 'Action required' then 1 else 2 end,a.id desc limit ? offset ?",args.toArray());
+  var rows=jdbc.queryForList("select a.*,n.read_at,n.acknowledged_at"+join+" order by case when a.resolved_at is null and a.actionable=true then 0 else 1 end,case when a.resolved_at is null and a.actionable=true then case a.priority when 'Critical' then 0 when 'Action required' then 1 else 2 end else 0 end,a.created_at desc,a.id desc limit ? offset ?",args.toArray());
   return Map.of("items",rows.stream().map(this::response).toList(),"total",total,"page",Math.max(0,page),"cursor",cursor(account));
  }
  private Map<String,Object> response(Map<String,Object> r){var out=new LinkedHashMap<String,Object>();out.put("id",r.get("id"));out.put("bookingId",r.get("rental_id"));out.put("kind",r.get("kind"));out.put("type",r.get("type"));out.put("priority",r.get("priority"));out.put("title",r.get("title"));out.put("details",json.readTree(r.get("snapshot").toString()));out.put("actionable",r.get("actionable"));out.put("acknowledgedBy",jdbc.queryForList("select a.name from booking_alert_recipients n join auth_accounts a on a.id=n.account_id where n.alert_id=? and n.acknowledged_at is not null",String.class,r.get("id")));for(String key:List.of("created_at","resolved_at","read_at","acknowledged_at")){String camel=switch(key){case "created_at"->"createdAt";case "resolved_at"->"resolvedAt";case "read_at"->"readAt";default->"acknowledgedAt";};out.put(camel,r.get(key)==null?null:instant(r.get(key)).toString());}return out;}
@@ -156,6 +177,7 @@ public class BookingNotificationService {
  public void mark(long account,Set<String> permissions,long id,boolean acknowledge){
   lock();var found=jdbc.queryForList("select a.* from booking_alerts a join booking_alert_recipients n on n.alert_id=a.id where a.id=? and n.account_id=?",id,account);
   if(found.isEmpty()||!kinds(permissions).contains(found.get(0).get("kind")))throw new ApiException(HttpStatus.NOT_FOUND,"Notification not found.");
+  if(acknowledge && (!Boolean.TRUE.equals(found.getFirst().get("actionable")) || found.getFirst().get("resolved_at")!=null))throw new ApiException(HttpStatus.CONFLICT,"Only unresolved action alerts can be acknowledged. Informational notices can be marked read.");
   if(acknowledge)jdbc.update("update booking_alert_recipients set read_at=coalesce(read_at,?),acknowledged_at=coalesce(acknowledged_at,?) where alert_id=? and account_id=?",stamp(),stamp(),id,account);
   else jdbc.update("update booking_alert_recipients set read_at=coalesce(read_at,?) where alert_id=? and account_id=?",stamp(),id,account);
   changed(account);

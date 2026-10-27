@@ -29,10 +29,12 @@ import org.springframework.transaction.annotation.Transactional;
 public class DriverService {
     private final DriverRepository drivers;
     private final DriverFileRepository files;
+    private final com.vehiclerental.mak.payroll.PayrollService payroll;
 
-    public DriverService(DriverRepository drivers, DriverFileRepository files) {
+    public DriverService(DriverRepository drivers, DriverFileRepository files, com.vehiclerental.mak.payroll.PayrollService payroll) {
         this.drivers = drivers;
         this.files = files;
+        this.payroll = payroll;
     }
 
     @Transactional(readOnly = true)
@@ -90,6 +92,7 @@ public class DriverService {
 
     @Transactional
     public void archive(long id) {
+        payroll.guardStaffArchive("DRIVER", id);
         Driver driver = require(id);
         if (driver.getBookingCount() > 0 || driver.getPaymentCount() > 0) {
             throw new ApiException(HttpStatus.CONFLICT, "Driver has booking or payment history. Deactivate instead.");

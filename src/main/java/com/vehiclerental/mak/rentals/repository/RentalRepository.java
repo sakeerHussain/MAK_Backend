@@ -12,6 +12,8 @@ import org.springframework.data.jpa.repository.Query;
 
 public interface RentalRepository extends JpaRepository<RentalRecord, Long> {
     List<RentalRecord> findByKindOrderByIdDesc(String kind);
+    @Query("select new com.vehiclerental.mak.rentals.repository.RentalUsageSource(r.vehicleId, r.status, r.payload) from RentalRecord r join Vehicle v on v.id = r.vehicleId where r.status in ('Active', 'Completed') and r.kind in ('Individual', 'Corporate')")
+    List<RentalUsageSource> utilizationSources();
     long countByDriverId(Long driverId);
     long countByVehicleIdAndStatus(Long vehicleId, String status);
     @Lock(LockModeType.PESSIMISTIC_WRITE)

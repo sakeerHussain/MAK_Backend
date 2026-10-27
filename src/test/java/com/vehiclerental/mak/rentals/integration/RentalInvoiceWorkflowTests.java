@@ -52,7 +52,7 @@ class RentalInvoiceWorkflowTests {
         v.setMake("Toyota"); v.setModel("Camry"); v.setYear(2025); v.setType("Sedan");
         v.setSeats(5); v.setTransmission("Automatic"); v.setFuelType("Petrol");
         v.setDailyRate(new BigDecimal("200")); v.setRateCurrency("SAR"); v.setOwnership("Owned");
-        v.setStatus("Available");
+        v.setListedForBooking(true); v.setStatus("Available");
         v.setOnSite(true); vehicles.saveAndFlush(v); RentalReadyFixture.documents(vehicleFiles,v); return v;
     }
 
@@ -233,4 +233,19 @@ class RentalInvoiceWorkflowTests {
         mvc.perform(post("/api/bookings").contentType("application/json").content("{}")).andExpect(status().isBadRequest());
         mvc.perform(get("/api/invoices")).andExpect(status().isOk()).andExpect(jsonPath("$").isArray());
     }
+
+    @Test void corporateBookingVisibilityIsEnforcedWithoutDisruptingExistingAssignments() {
+        long account=company();var hidden=vehicle();hidden.setListedForBooking(false);vehicles.saveAndFlush(hidden);
+        var error=assertThrows(ApiException.class,()->rentals.create("Corporate",corporate(account,hidden.getId())));
+        assertTrue(error.getMessage().contains("not listed for booking"));
+        var original=vehicle();var data=corporate(account,original.getId());data.put("status","Confirmed");
+        long trip=((Number)rentals.create("Corporate",data).get("id")).longValue();
+        assertThrows(ApiException.class,()->rentals.update("Corporate",trip,Map.of("vehicleId",hidden.getId())));
+        assertThrows(ApiException.class,()->rentals.assign("Corporate",trip,Map.of("vehicleId",hidden.getId())));
+        assertEquals(original.getId(),((Number)rentals.get("Corporate",trip).get("vehicleId")).longValue());
+        original.setListedForBooking(false);vehicles.saveAndFlush(original);
+        assertEquals("Active",rentals.assign("Corporate",trip,Map.of("vehicleId",original.getId(),"handedOver",true)).get("status"));
+        assertEquals("Completed",rentals.transition("Corporate",trip,"Completed",Map.of()).get("status"));
+    }
+
 }

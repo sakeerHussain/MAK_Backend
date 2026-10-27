@@ -52,6 +52,12 @@ public class SecurityConfig {
    for(String module:Permissions.MODULES){String resource=module.equals("fleet")?"vehicles":module;rules.requestMatchers(HttpMethod.GET,"/api/"+resource,"/api/"+resource+"/**").access(permission(accounts,module+".read"));rules.requestMatchers(HttpMethod.HEAD,"/api/"+resource,"/api/"+resource+"/**").access(permission(accounts,module+".read"));rules.requestMatchers("/api/"+resource,"/api/"+resource+"/**").access((authentication,context)->{
      var req=context.getRequest();String path=req.getRequestURI().substring(req.getContextPath().length());String verb=req.getMethod();String tail=path.substring(("/api/"+resource).length());String action="DELETE".equals(verb)?"archive":"POST".equals(verb)&&(tail.isEmpty()||tail.equals("/save")||tail.equals("/import"))?"create":"edit";
      if(module.equals("fleet")&&"POST".equals(verb)&&(tail.equals("/import-drafts")||tail.matches("/import-drafts/[^/]+/complete")))action="create";
+     if(module.equals("payroll")&&"POST".equals(verb)&&(tail.equals("/profiles")||tail.equals("/drafts")))action="create";
+     if(module.equals("payroll")&&"POST".equals(verb)){
+      if(tail.matches("/drafts/[^/]+/approve"))return new AuthorizationDecision(allowed(accounts,authentication.get(),"payroll.approve"));
+      if(tail.matches("/drafts/[^/]+/reopen")||tail.matches("/drafts/[^/]+/payments/[^/]+/reverse"))return new AuthorizationDecision(allowed(accounts,authentication.get(),"payroll.correct"));
+      if(tail.matches("/drafts/[^/]+/payments")||tail.matches("/drafts/[^/]+/payments/[^/]+/receipt"))return new AuthorizationDecision(allowed(accounts,authentication.get(),"payroll.pay"));
+     }
      if(module.equals("customers")&&"POST".equals(verb)&&tail.matches("/[^/]+/quotes"))action="create";
      if(module.equals("invoices")){
       if(tail.equals("/billing-profile"))return new AuthorizationDecision(allowed(accounts,authentication.get(),"billing-profile.write"));
