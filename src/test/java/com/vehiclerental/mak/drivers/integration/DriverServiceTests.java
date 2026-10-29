@@ -112,4 +112,17 @@ class DriverServiceTests {
         assertEquals(HttpStatus.CONFLICT, assertThrows(ApiException.class, () -> drivers.archive(created.id())).status());
         assertEquals("Inactive", drivers.updateStatus(created.id(), new DriverStatusRequest("Inactive")).details().status());
     }
+
+    @Test void renewedUploadSynchronizesProfileAndProfileEditsCannotRestoreStaleDates() {
+        var d = create();
+        var future = LocalDate.now(java.time.ZoneId.of("Asia/Riyadh")).plusYears(3);
+        var upload = new MockMultipartFile("file", "renewed.pdf", "application/pdf", "%PDF-1.4 test".getBytes());
+        files.uploadDocument(d.id(), "Iqama", future, upload);
+        files.uploadDocument(d.id(), "License copy", future, upload);
+        assertEquals(future, drivers.get(d.id()).details().iqamaExpiry());
+        assertEquals(future, drivers.get(d.id()).details().licenceExpiry());
+        drivers.update(d.id(), request(d.details().employeeId(), d.details().phone()));
+        assertEquals(future, drivers.get(d.id()).details().licenceExpiry());
+        assertEquals(future, drivers.get(d.id()).details().iqamaExpiry());
+    }
 }

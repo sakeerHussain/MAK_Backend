@@ -57,8 +57,15 @@ public class DriverFileService {
         if (!DOCUMENT_TYPES.contains(type)) throw new ApiException(HttpStatus.BAD_REQUEST, "Unsupported driver document type.");
         if (EXPIRING_DOCUMENTS.contains(type) && expiryDate == null) throw new ApiException(HttpStatus.BAD_REQUEST, "Expiry date is required for Iqama and License copy.");
         DriverFile existing = files.findByDriverIdAndKindAndDocumentType(driverId, "DOCUMENT", type).orElse(null);
+        if (expiryDate == null) {
+            expiryDate = existing != null && existing.getExpiryDate() != null ? existing.getExpiryDate()
+                    : DriverCompliance.profileDates(drivers.require(driverId)).get(type);
+        }
+        if (DriverCompliance.EXPIRING_COPIES.contains(type) && expiryDate == null)
+            throw new ApiException(HttpStatus.BAD_REQUEST, "Expiry date is required for " + type + ".");
         DriverFileResponse saved = save(driverId, "DOCUMENT", type, null, null, expiryDate, upload);
         replace(existing);
+        DriverCompliance.syncDate(drivers.require(driverId), type, expiryDate);
         return saved;
     }
 

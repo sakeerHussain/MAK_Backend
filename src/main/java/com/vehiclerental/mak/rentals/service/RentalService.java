@@ -42,6 +42,7 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class RentalService {
     private static final ZoneId KSA = ZoneId.of("Asia/Riyadh");
+    private final com.vehiclerental.mak.drivers.repository.DriverFileRepository driverFiles;
     private final VehicleFileRepository vehicleFiles;
     private final RentalRepository rentals;
     private final RentalPaymentRepository payments;
@@ -57,7 +58,9 @@ public class RentalService {
 
     public RentalService(RentalRepository rentals, RentalPaymentRepository payments, CustomerRepository customers,
             QuoteRepository quotes, VehicleRepository vehicles, DriverRepository drivers, VehicleFileRepository vehicleFiles,
+            com.vehiclerental.mak.drivers.repository.DriverFileRepository driverFiles,
             InvoiceSourceRepository invoiceSources, InvoiceRepository invoices, ObjectMapper json, EmailService emails, BookingNotificationService notifications) {
+        this.driverFiles = driverFiles;
         this.vehicleFiles = vehicleFiles; this.rentals = rentals; this.payments = payments; this.customers = customers; this.quotes = quotes;
         this.vehicles = vehicles; this.drivers = drivers; this.invoiceSources = invoiceSources; this.invoices = invoices; this.json = json; this.emails = emails; this.notifications = notifications;
     }
@@ -296,7 +299,10 @@ public class RentalService {
         }
         if (driverId != null && !Set.of("Completed", "Cancelled").contains(status)) {
             Driver driver = drivers.findById(driverId).orElseThrow(() -> bad("Driver not found."));
-            if (driver.isArchived() || !"Active".equals(driver.getStatus())) throw bad("Driver is inactive.");
+            LocalDate today = LocalDate.now(KSA);
+            LocalDate through = returned.toLocalDate().isAfter(today) ? returned.toLocalDate() : today;
+            String driverIssue = com.vehiclerental.mak.drivers.service.DriverCompliance.bookingIssue(driver, driverFiles.findByDriverIdOrderByIdAsc(driverId), through);
+            if (driverIssue != null) throw bad(driverIssue);
         }
         if (!Set.of("Cancelled", "Completed").contains(status) && (vehicleId != null || driverId != null)
                 && !rentals.conflicts(record.getId() == null ? -1 : record.getId(), vehicleId == null ? -1L : vehicleId,

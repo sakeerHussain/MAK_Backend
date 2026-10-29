@@ -61,4 +61,41 @@ class AssignmentAlertWorkflowTests {
   assertThrows(ApiException.class,()->rentals.transition(kind,id,"Active",Map.of()));
  }
  @Test void futureDeadlineBlocksAssignmentUntilDue(){long id=id(rentals.create("Individual",request("Individual")));var v=car();assertThrows(ApiException.class,()->rentals.assign("Individual",id,Map.of("vehicleId",v.getId())));assertThrows(ApiException.class,()->rentals.update("Individual",id,Map.of("vehicleId",v.getId())));}
+
+ @Autowired com.vehiclerental.mak.fleet.repository.VehicleFileRepository vehicleFileRepo;
+ @Autowired com.vehiclerental.mak.drivers.repository.DriverRepository driverRepo;
+ @Autowired com.vehiclerental.mak.drivers.repository.DriverFileRepository driverFiles;
+ com.vehiclerental.mak.drivers.entity.Driver driver() {
+  var d=new com.vehiclerental.mak.drivers.entity.Driver();var key=UUID.randomUUID().toString();
+  d.setEmployeeId(key);d.setName("Compliance QA");d.setPhone("0500000001");d.setPhoneKey(key);d.setCategory("Chauffeur");d.setDesignation("Driver");d.setEmploymentType("Full-time");d.setStatus("Active");d.setDailyRate(BigDecimal.TEN);return driverRepo.saveAndFlush(d);
+ }
+ void driverDocs(com.vehiclerental.mak.drivers.entity.Driver d, LocalDate expiry) {
+  for(var type:List.of("Iqama","License copy")) {
+   var f=new com.vehiclerental.mak.drivers.entity.DriverFile();f.setDriver(d);f.setKind("DOCUMENT");f.setDocumentType(type);f.setStorageKey(UUID.randomUUID().toString());f.setOriginalName(type+".pdf");f.setContentType("application/pdf");f.setSizeBytes(12L);f.setCreatedAt(Instant.now());f.setExpiryDate(expiry);driverFiles.saveAndFlush(f);
+  }
+ }
+ @ParameterizedTest @ValueSource(strings={"Individual","Corporate"})
+ @Transactional(propagation=org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
+ void driverComplianceEnforcedForCreateAssignRescheduleAndHandover(String kind) {
+  var d=driver();d.setInsuranceExpiry(now.toLocalDate().minusDays(1));d.setPassportExpiry(now.toLocalDate().minusDays(1));driverRepo.saveAndFlush(d);var data=request(kind);data.put("assignmentAlertAt",now.minusMinutes(1).toString());data.put("bookingType","Quick");data.put("vehicleId",car().getId());
+  data.put("driverMode","Assigned");if(kind.equals("Corporate"))data.put("serviceMode","With driver");data.put("driverId",d.getId());
+  assertTrue(assertThrows(ApiException.class,()->rentals.create(kind,data)).getMessage().contains("Iqama"));
+  driverDocs(d,now.toLocalDate().plusDays(5));
+  assertTrue(assertThrows(ApiException.class,()->rentals.create(kind,data)).getMessage().contains("valid through"));
+  for(var f:driverFiles.findByDriverIdOrderByIdAsc(d.getId())) { f.setExpiryDate(now.toLocalDate().plusDays(6));driverFiles.saveAndFlush(f); }
+  var saved=rentals.create(kind,data);long booking=id(saved);
+  assertThrows(ApiException.class,()->rentals.update(kind,booking,Map.of("returnAt",now.plusDays(7).toString())));
+  assertEquals(saved.get("returnAt"),rentals.get(kind,booking).get("returnAt"));
+  var missing=driver();assertThrows(ApiException.class,()->rentals.assign(kind,booking,Map.of("driverId",missing.getId())));
+  assertEquals(d.getId(),((Number)rentals.get(kind,booking).get("driverId")).longValue());
+  // Move pickup to today to exercise the handover path, then expire a required copy.
+  var v=car();
+  com.vehiclerental.mak.RentalReadyFixture.documents(vehicleFileRepo,v);
+  var pickup=now.minusMinutes(1);var changes=new LinkedHashMap<String,Object>();
+  changes.putAll(Map.of("pickupAt",pickup.toString(),"assignmentAlertAt",pickup.minusHours(1).toString(),"assignmentAlertReviewedForPickup",pickup.toString(),"vehicleId",v.getId()));
+  rentals.update(kind,booking,changes);
+  var f=driverFiles.findByDriverIdOrderByIdAsc(d.getId()).getFirst();f.setExpiryDate(now.toLocalDate().minusDays(1));driverFiles.saveAndFlush(f);
+  assertThrows(ApiException.class,()->rentals.transition(kind,booking,"Active",Map.of()));
+  assertEquals("Confirmed",rentals.get(kind,booking).get("status"));
+ }
 }

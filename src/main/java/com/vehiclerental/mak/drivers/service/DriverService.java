@@ -79,6 +79,8 @@ public class DriverService {
         Driver driver = require(id);
         validate(request, id);
         copy(request, driver);
+        files.findByDriverIdOrderByIdAsc(id).stream().filter(f -> "DOCUMENT".equals(f.getKind()))
+                .forEach(f -> DriverCompliance.syncDate(driver, f.getDocumentType(), f.getExpiryDate()));
         drivers.flush();
         return response(driver, files.findByDriverIdOrderByIdAsc(id));
     }

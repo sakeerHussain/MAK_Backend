@@ -10,10 +10,13 @@ import tools.jackson.databind.ObjectMapper;
 @Service
 public class DashboardInsightsService {
  private final JdbcTemplate jdbc;private final ObjectMapper json;
- public DashboardInsightsService(JdbcTemplate jdbc,ObjectMapper json){this.jdbc=jdbc;this.json=json;}
+ private final com.vehiclerental.mak.drivers.repository.DriverRepository drivers;
+ private final com.vehiclerental.mak.drivers.repository.DriverFileRepository driverFiles;
+ public DashboardInsightsService(JdbcTemplate jdbc,ObjectMapper json,com.vehiclerental.mak.drivers.repository.DriverRepository drivers,com.vehiclerental.mak.drivers.repository.DriverFileRepository driverFiles){this.jdbc=jdbc;this.json=json;this.drivers=drivers;this.driverFiles=driverFiles;}
  private BigDecimal sum(String sql,Object... args){var value=jdbc.queryForObject(sql,BigDecimal.class,args);return value==null?BigDecimal.ZERO:value;}
  private LocalDateTime time(Object value){return ((java.sql.Timestamp)value).toLocalDateTime();}
  private Map<String,Object> alert(String title,String detail,String page,long id,String severity){return Map.of("title",title,"detail",detail,"page",page,"id",id,"severity",severity);}
+ @org.springframework.transaction.annotation.Transactional(readOnly=true)
  public Map<String,Object> build(LocalDate today,int days,Set<String> permissions){
   var kinds=new ArrayList<String>();if(permissions.contains("bookings.read"))kinds.add("Individual");if(permissions.contains("corporate-trips.read"))kinds.add("Corporate");
   String kindWhere=kinds.isEmpty()?"1=0":"kind in ("+String.join(",",Collections.nCopies(kinds.size(),"?"))+")";
@@ -42,13 +45,23 @@ public class DashboardInsightsService {
    }
   }
   if(permissions.contains("drivers.read")){
-   var seen=new HashSet<String>();
-   for(var row:jdbc.queryForList("select id,name,iqama_expiry,licence_expiry,passport_expiry,contract_expiry,insurance_expiry from drivers where archived=false and status='Active'")){
-    for(String field:List.of("iqama_expiry","licence_expiry","passport_expiry","contract_expiry","insurance_expiry"))if(row.get(field)!=null){var expiry=((java.sql.Date)row.get(field)).toLocalDate();if(!expiry.isAfter(warningUntil)){String type=field.replace("_expiry","");seen.add(row.get("id")+":"+type+":"+expiry);alerts.add(alert("Driver / "+row.get("name"),type+" expires "+expiry,"Driver",((Number)row.get("id")).longValue(),expiry.isBefore(today)?"Expired":"Due soon"));}}
-   }
-   for(var row:jdbc.queryForList("select f.driver_id,d.name,f.document_type,f.certificate_name,f.expiry_date from driver_files f join drivers d on d.id=f.driver_id where d.archived=false and d.status='Active' and f.expiry_date<=?",warningUntil)){
-    var expiry=((java.sql.Date)row.get("expiry_date")).toLocalDate();String type=Objects.toString(row.get("certificate_name"),Objects.toString(row.get("document_type"),"Document"));String key=row.get("driver_id")+":"+type.toLowerCase().replace(" copy","").replace("license","licence")+":"+expiry;
-    if(seen.add(key))alerts.add(alert("Driver / "+row.get("name"),type+" expires "+expiry,"Driver",((Number)row.get("driver_id")).longValue(),expiry.isBefore(today)?"Expired":"Due soon"));
+   var active=drivers.findByArchivedFalseAndStatus("Active");
+   var byDriver=new HashMap<Long,List<com.vehiclerental.mak.drivers.entity.DriverFile>>();
+   if(!active.isEmpty())for(var file:driverFiles.findByDriverIdInOrderByIdAsc(active.stream().map(com.vehiclerental.mak.drivers.entity.Driver::getId).toList()))
+    byDriver.computeIfAbsent(file.getDriver().getId(),unused->new ArrayList<>()).add(file);
+   for(var driver:active){
+    var records=byDriver.getOrDefault(driver.getId(),List.of());
+    var dates=com.vehiclerental.mak.drivers.service.DriverCompliance.effectiveDates(driver,records);
+    for(var entry:dates.entrySet()){
+     var expiry=entry.getValue();if(expiry!=null && !expiry.isAfter(warningUntil))
+      {
+       boolean required=com.vehiclerental.mak.drivers.service.DriverCompliance.REQUIRED_COPIES.contains(entry.getKey());
+       alerts.add(alert((required?"Driver / ":"Optional driver record / ")+driver.getName(),entry.getKey()+" expires "+expiry+(required?"":" — warning only; does not block booking"),"Driver",driver.getId(),expiry.isBefore(today)?(required?"Expired":"Review"):"Due soon"));
+      }
+    }
+    // Certificates remain a separate alert category; they do not replace identity-document dates.
+    for(var file:records)if("CERTIFICATION".equals(file.getKind()) && file.getExpiryDate()!=null && !file.getExpiryDate().isAfter(warningUntil))
+     alerts.add(alert("Optional driver record / "+driver.getName(),Objects.toString(file.getCertificateName(),"Certification")+" expires "+file.getExpiryDate()+" — warning only; does not block booking","Driver",driver.getId(),file.getExpiryDate().isBefore(today)?"Review":"Due soon"));
    }
   }
   if(permissions.contains("maintenance.read") && permissions.contains("fleet.read")){
