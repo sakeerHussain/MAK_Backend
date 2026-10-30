@@ -82,7 +82,7 @@ public class AccountService {
  @Transactional(readOnly=true) public List<AuthAuditResponse> auditLog(){return audits.findTop200ByOrderByIdDesc().stream().map(AuthAuditMapper::toResponse).toList();}
  public Set<String> permissions(Account account){return roles.permissions(account);}
  public void requirePermission(String permission){var auth=org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();var account=auth!=null&&auth.getPrincipal() instanceof AccountPrincipal p?active(p):null;if(account==null||!permissions(account).contains(permission))throw new ApiException(HttpStatus.FORBIDDEN,"Your role does not allow this action.");}
- private void passwordPolicy(String p){if(p.length()<12 || p.getBytes(StandardCharsets.UTF_8).length>72 || !p.matches("(?s).*[a-zA-Z].*") || !p.matches("(?s).*\\d.*") || !p.matches("(?s).*[^a-zA-Z0-9\\s].*"))throw new ApiException(HttpStatus.BAD_REQUEST,"Use 12+ characters with letters, numbers and symbols; maximum 72 UTF-8 bytes.");}
+ private void passwordPolicy(String p){AccountPasswordPolicy.validate(p);}
  private String normalize(String s){return s.trim().toLowerCase(Locale.ROOT);}
  private ApiException invalidLogin(){return new ApiException(HttpStatus.UNAUTHORIZED,"Email or password is incorrect, or sign-in is temporarily locked. Try again later.");}
  private ApiException invalidReset(){return new ApiException(HttpStatus.BAD_REQUEST,"This password reset link is invalid or expired.");}

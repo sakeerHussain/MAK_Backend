@@ -232,3 +232,21 @@ Booking times are interpreted as Saudi local time (`Asia/Riyadh`). Advance assig
 For a production reverse proxy, disable buffering and caching on `/api/notifications/stream` and allow an idle read timeout longer than the heartbeat interval. Response headers include `Cache-Control: no-cache, no-transform` and `X-Accel-Buffering: no`. Do not expose the stream publicly. Multiple backend instances use a database lock for alert deduplication and poll the durable account cursor for local SSE connections; no in-memory-only delivery dependency is required.
 
 In-app notifications require a connected browser. Browser/OS push and SMS are not included. Email delivery still depends on configured SMTP. Delivery failures are logged/retried by the existing email queue; notifications do not promise guaranteed human acknowledgement. Alert/event history currently has no automatic retention purge; establish a retention policy before long-term production use.
+
+
+## Initial administrator during deployment
+
+For a fresh database, optionally configure these backend environment variables in the deployment secret manager:
+
+| Variable | Value |
+| --- | --- |
+| `ADMIN_SEED_ENABLED` | `true` for initial setup; defaults to `false` |
+| `ADMIN_SEED_NAME` | Administrator display name |
+| `ADMIN_SEED_EMAIL` | Administrator sign-in email |
+| `ADMIN_SEED_PASSWORD` | Private initial password: 12+ characters, letters, numbers and symbols; maximum 72 UTF-8 bytes |
+
+Start the backend normally. After migrations, the seed acquires the same database lock as first-admin registration. On an empty, uninitialized database it creates one Active Admin with a BCrypt password and an ADMIN_SETUP audit event, and completes bootstrap in one transaction. No bootstrap code or signup is required for this route. No email is sent by the seed. Sign in with the supplied email and password.
+
+Invalid or missing credentials on a fresh database stop startup with a configuration error. Existing accounts with an incomplete setup flag also stop seeding for manual review; they are never promoted or overwritten. Once setup is complete, later runs skip seeding, even if the configured email/password changes or seed credentials are removed. Multiple instances serialize through the database lock.
+
+After verifying initial sign-in, set `ADMIN_SEED_ENABLED=false` and remove `ADMIN_SEED_PASSWORD` from the deployment environment. Never commit credentials or place them on command lines. Keep normal deployment/application traffic behind readiness checks until startup completes. The existing `AUTH_BOOTSTRAP_CODE` signup process remains available when seeding is disabled. Use invitations for subsequent users; this seed is not an account-recovery or password-reset mechanism.
