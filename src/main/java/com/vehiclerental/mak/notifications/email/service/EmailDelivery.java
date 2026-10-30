@@ -47,8 +47,11 @@ public class EmailDelivery {
             JavaMailSender mail=sender.getIfAvailable();
             if (mail==null || from.isBlank()) throw new IllegalStateException("SMTP not configured");
             var message=mail.createMimeMessage();
-            var helper=new MimeMessageHelper(message,email.getAttachment()!=null,"UTF-8");
-            helper.setFrom(from); helper.setTo(email.getRecipient()); helper.setSubject(email.getSubject()); helper.setText(email.getBody(),false);
+            var helper=new MimeMessageHelper(message,email.getAttachment()!=null || email.getHtmlBody()!=null,"UTF-8");
+            helper.setFrom(from); helper.setTo(email.getRecipient()); helper.setSubject(email.getSubject()); if (email.getHtmlBody()!=null) {
+                helper.setText(email.getBody(),email.getHtmlBody());
+                helper.addInline("mak-logo",new org.springframework.core.io.ClassPathResource("mail/mak-logo.jpg"),"image/jpeg");
+            } else helper.setText(email.getBody(),false);
             if (email.getAttachment()!=null) helper.addAttachment(email.getAttachmentName(),new ByteArrayResource(Base64.getDecoder().decode(email.getAttachment())),"application/pdf");
             mail.send(message);
             email.setStatus("Sent"); email.setSentAt(Instant.now()); email.setLastError(null);

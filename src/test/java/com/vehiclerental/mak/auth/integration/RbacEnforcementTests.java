@@ -106,7 +106,7 @@ class RbacEnforcementTests {
   assertEquals(200,call(session(custom("bookings.read","bookings.create")),"GET","/api/notifications/summary",null));
   var dashboard=mvc.perform(get("/api/dashboard").session(session(custom()))).andReturn().getResponse();assertEquals(200,dashboard.getStatus());var data=json.readTree(dashboard.getContentAsString());assertTrue(data.path("recentBookings").isEmpty());assertFalse(data.path("access").path("finance").asBoolean());assertFalse(data.path("access").path("fleet").asBoolean());
  }
- String inviteToken(EmailService mock){var url=ArgumentCaptor.forClass(String.class);verify(mock,atLeastOnce()).staffInvitation(anyLong(),anyString(),anyString(),anyString(),url.capture());String value=url.getValue();return value.substring(value.indexOf("invitation=")+11);}
+ String inviteToken(EmailService mock){var url=ArgumentCaptor.forClass(String.class);verify(mock,atLeastOnce()).staffInvitation(anyLong(),anyString(),anyString(),anyString(),url.capture(),any(java.time.Instant.class));String value=url.getValue();return value.substring(value.indexOf("invitation=")+11);}
  @Test void invitationResendRevokeExpiryDuplicateAndDisabledMailUseMockOnly(){
   var email=mock(EmailService.class);var sender=new InvitationService(invitations,accounts,controls,audits,roles,email,true,"http://localhost:5173");
   var body=Map.<String,Object>of("name","Audit invitation","email","invite-"+UUID.randomUUID()+"@example.invalid","role","Viewer");var result=sender.invite(body,admin.getId());long id=((Number)result.get("id")).longValue();String first=inviteToken(email);assertThrows(ApiException.class,()->sender.invite(body,admin.getId()));

@@ -13,6 +13,7 @@ public class EmailMessage {
     @Column(nullable=false,length=254) private String recipient;
     @Column(nullable=false,length=200) private String subject;
     @Column(nullable=false,columnDefinition="text") private String body;
+    @Column(columnDefinition="text") private String htmlBody;
     @Column(columnDefinition="text") private String attachment;
     @Column(length=100) private String attachmentName;
     @Column(nullable=false,length=20) private String status;
