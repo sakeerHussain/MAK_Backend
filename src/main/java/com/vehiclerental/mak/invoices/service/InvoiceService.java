@@ -247,7 +247,7 @@ public class InvoiceService {
                 throw bad("Corporate invoice sources must belong to the same company.");
         }
         Map<String, Object> safe = new LinkedHashMap<>(request);
-        safe.remove("creditNotes"); safe.remove("creditedAmount"); safe.remove("payments"); safe.remove("status"); safe.remove("invoiceNumber"); safe.remove("issuedAt");
+        safe.remove("creditNotes"); safe.remove("creditedAmount"); safe.remove("payments"); safe.remove("status"); safe.remove("invoiceNumber"); safe.remove("issuedAt"); safe.remove("phaseOneQr");
         safe.put("companyId", "Corporate".equals(invoice.getKind()) ? linked.get(0).getCustomerId() : null);
         safe.put("sources", linked.stream().map(rental -> Map.of("kind", rental.getKind(), "id", rental.getId(),
                 "reference", rental.getReference(), "serviceDate", serviceDate(rental))).toList());
@@ -338,8 +338,10 @@ public class InvoiceService {
             RentalRecord booking=rentals.lockById(linked.get(0).getId().getRentalId()).orElseThrow(()->bad("Booking not found."));
             InvoiceBookingCharges.validateIssue(draft,booking,json.readValue(booking.getPayload(),new TypeReference<Map<String,Object>>() {}),calculateTotal(draft));
         }
+        var issueInstant=time.now();
+        draft.put("phaseOneQr",InvoicePhaseOneQr.encode(draft,issueInstant));
         invoice.setPayload(json.writeValueAsString(draft));
-        invoice.setStatus("Issued"); invoice.setIssuedAt(time.now());
+        invoice.setStatus("Issued"); invoice.setIssuedAt(issueInstant);
         invoice.setNumber("INV-" + (1000 + invoice.getId()));
     }
     @SuppressWarnings("unchecked") private Map<String, Object> cast(Map<?, ?> map) { return (Map<String, Object>) map; }

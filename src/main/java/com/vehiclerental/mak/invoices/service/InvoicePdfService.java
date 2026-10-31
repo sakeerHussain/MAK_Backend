@@ -18,63 +18,7 @@ public class InvoicePdfService {
     private final InvoiceTime time;
     public InvoicePdfService(InvoiceTime time) { this.time = time; }
     private static final BigDecimal HUNDRED=new BigDecimal("100");
-    public byte[] render(Map<String,Object> invoice) {
-        try (PDDocument doc=new PDDocument(); ByteArrayOutputStream output=new ByteArrayOutputStream()) {
-            doc.getDocumentInformation().setTitle(s(invoice.get("invoiceNumber")));
-            try (var fontStream=PDType0Font.class.getResourceAsStream("/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {
-                if (fontStream==null) throw new IOException("Invoice font unavailable");
-                PDFont font=PDType0Font.load(doc,fontStream);
-                Canvas c=new Canvas(doc,font,s(invoice.get("invoiceNumber")),"Draft".equals(invoice.get("status")));
-                c.section("Invoice metadata");
-                c.pairs(new String[][]{{"Invoice #",s(invoice.get("invoiceNumber")).isBlank()?"DRAFT-"+invoice.get("id"):s(invoice.get("invoiceNumber"))},
-                    {"Issue date (KSA)",time.day(s(invoice.get("issuedAt")))},{"Due date",s(invoice.get("dueDate"))},
-                    {"Terms",s(invoice.get("paymentTerms"))},{"Due date basis", "Terms".equals(invoice.get("dueDateMode"))?"Payment terms from issue date (KSA)":"Manual".equals(invoice.get("dueDateMode"))?"Manual override":"Saved due date"},{"Override reason",s(invoice.get("dueDateOverrideReason"))},{"P.O. #",s(invoice.get("poNumber"))},
-                    {"Transaction type",s(invoice.get("transactionType"))}});
-                c.section("Seller and buyer details");
-                Map<String,Object> seller=map(invoice.get("issuer")), buyer=map(invoice.get("billTo"));
-                String[] keys={"name","buildingNumber","street","additionalNumber","district","city","country","postalCode","phone","taxNumber","otherId"};
-                String[] labels={"Name","Building number","Street","Additional number","District","City","Country","ZIP / Postal code","Phone","VAT number","Other ID"};
-                c.tableHeader(new String[]{"Detail","Seller","Buyer"},new float[]{105,203,203});
-                for(int i=0;i<keys.length;i++) c.row(new String[]{labels[i],party(seller,keys[i]),party(buyer,keys[i])},new float[]{105,203,203},false);
-                c.row(new String[]{"Billing email","",s(buyer.get("email"))},new float[]{105,203,203},false);
-                c.section("Linked bookings / trips");
-                for(var source:rows(invoice.get("sources"))) c.text(s(source.get("reference"))+" | Service date: "+s(source.get("serviceDate")),10);
-                c.section("Line items - SAR");
-                float[] widths={23,149,57,36,69,40,60,77};
-                String[] headers={"#","Nature of goods / services","Unit price","Qty","Taxable","VAT %","VAT","Total incl. VAT"};
-                c.tableHeader(headers,widths);
-                BigDecimal taxable=BigDecimal.ZERO,taxTotal=BigDecimal.ZERO;
-                TreeMap<BigDecimal,BigDecimal[]> taxes=new TreeMap<>();int index=0;
-                for(var line:rows(invoice.get("lines"))) {
-                    BigDecimal gross=n(line.get("quantity")).multiply(n(line.get("unitPrice"))).setScale(2,RoundingMode.HALF_UP);
-                    BigDecimal net=gross.subtract(gross.multiply(n(line.get("discountPercent"))).divide(HUNDRED,2,RoundingMode.HALF_UP));
-                    BigDecimal rate=n(line.get("taxPercent"));BigDecimal tax=net.multiply(rate).divide(HUNDRED,2,RoundingMode.HALF_UP);
-                    taxable=taxable.add(net); taxTotal=taxTotal.add(tax);
-                    BigDecimal[] group=taxes.computeIfAbsent(rate,k->new BigDecimal[]{BigDecimal.ZERO,BigDecimal.ZERO});group[0]=group[0].add(net);group[1]=group[1].add(tax);
-                    String description=s(line.get("description"))+"\n"+s(line.get("sourceRef"))+" | "+s(line.get("unit"));
-                    if(n(line.get("discountPercent")).signum()!=0) description+=" | Discount "+s(line.get("discountPercent"))+"%";
-                    c.row(new String[]{""+(++index),description,money(n(line.get("unitPrice"))),s(line.get("quantity")),money(net),rate.stripTrailingZeros().toPlainString()+"%",money(tax),money(net.add(tax))},widths,false);
-                }
-                c.clearTable();c.ensure(170);c.section("Invoice totals");
-                BigDecimal total=taxable.add(taxTotal),paid=BigDecimal.ZERO;
-                for(var payment:rows(invoice.get("payments"))) paid=paid.add(n(payment.get("amount")).multiply("Refund".equals(payment.get("kind"))?BigDecimal.valueOf(-1):BigDecimal.ONE));
-                BigDecimal credited=n(invoice.get("creditedAmount")),adjusted=total.subtract(credited);
-                c.pairs(new String[][]{{"Total amount (SAR)",money(total)},{"Total taxable amount excluding VAT (SAR)",money(taxable)},
-                    {"Total VAT (SAR)",money(taxTotal)},{"Credit notes (SAR)",money(credited)},{"Total amount due (SAR)",money(adjusted)},{"Net amount received (SAR)",money(paid)},
-                    {"Balance due (SAR)",money(adjusted.subtract(paid).max(BigDecimal.ZERO))},{"Refund due (SAR)",money(paid.subtract(adjusted).max(BigDecimal.ZERO))}});
-                if(!rows(invoice.get("creditNotes")).isEmpty()){c.section("Linked credit notes");for(var credit:rows(invoice.get("creditNotes")))c.text(s(credit.get("number"))+" | "+s(credit.get("reason"))+" | SAR "+money(n(credit.get("total"))),10);}
-                c.section("Tax summary");c.tableHeader(new String[]{"Tax rate","Taxable amount (SAR)","Tax amount (SAR)"},new float[]{111,200,200});
-                for(var entry:taxes.entrySet()) c.row(new String[]{entry.getKey().stripTrailingZeros().toPlainString()+"%",money(entry.getValue()[0]),money(entry.getValue()[1])},new float[]{111,200,200},false);
-                c.row(new String[]{"Total",money(taxable),money(taxTotal)},new float[]{111,200,200},false);c.clearTable();
-                c.section("Notes / Message");c.text(s(invoice.get("notes")),10);
-                c.section("Payment details");c.text(s(invoice.get("paymentInstructions")),10);c.text("Contact person: "+s(invoice.getOrDefault("paymentContact",buyer.get("contactName"))),10);
-                c.ensure(170);c.section("Account details");Map<String,Object> account=map(invoice.get("account"));
-                c.pairs(new String[][]{{"Account name",s(account.get("accountName"))},{"Bank name",s(account.get("bankName"))},
-                    {"Branch name",s(account.get("branchName"))},{"Account number",s(account.get("accountNumber"))},{"IBAN No.",s(account.get("iban"))}});
-                c.finish();doc.save(output);return output.toByteArray();
-            }
-        } catch(IOException e) { throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR,"Unable to generate the invoice PDF. Please retry."); }
-    }
+    public byte[] render(Map<String,Object> invoice) { return new BrandedInvoicePdf(time).render(invoice); }
     public byte[] renderCreditNote(Map<String,Object> note) {
         try (PDDocument doc=new PDDocument(); ByteArrayOutputStream output=new ByteArrayOutputStream();
              var fontStream=PDType0Font.class.getResourceAsStream("/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf")) {

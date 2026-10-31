@@ -1,0 +1,24 @@
+package com.vehiclerental.mak.invoices.service;
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+import java.util.*;import java.time.*;import java.math.*;import java.nio.charset.StandardCharsets;
+import org.apache.pdfbox.Loader;import org.apache.pdfbox.rendering.PDFRenderer;import org.apache.pdfbox.text.PDFTextStripper;
+import com.google.zxing.*;import com.google.zxing.common.HybridBinarizer;
+
+class InvoiceTemplateTests {
+ static Map<String,Object> sample(){var m=new HashMap<String,Object>();m.put("id",1);m.put("status","Issued");m.put("invoiceNumber","INV-QA-001");m.put("issuedAt","2026-10-31T09:00:00Z");m.put("dueDate","2026-10-31");m.put("issuer",Map.of("name","Mishary Al Khonaini International Contracting Est.","taxNumber","301151675900003","buildingNumber","6958","street","10th Street","additionalNumber","3598","district","Al Aqrabiyah","city","Al Aqrabiyah","country","Saudi Arabia","postalCode","31952","phone","013 8892607"));m.put("billTo",Map.of("name","Example customer — عميل تجريبي","city","Al Khobar","country","Saudi Arabia"));m.put("lines",List.of(Map.of("description","Monthly transport service / خدمة النقل الشهري","quantity",1,"unitPrice",10000,"discountPercent",0,"taxPercent",15)));m.put("payments",List.of(Map.of("kind","Payment","amount",11500,"date","2026-10-31","method","Bank","reference","QA-001")));m.put("account",Map.of("accountName","MAK test account","bankName","SAUDI AWWAL BANK [SAB]","iban","SAMPLE ONLY"));return m;}
+ static Map<Integer,String> decode(String value){byte[] bytes=Base64.getDecoder().decode(value);var result=new LinkedHashMap<Integer,String>();for(int p=0;p<bytes.length;){int tag=bytes[p++]&255,len=bytes[p++]&255;result.put(tag,new String(bytes,p,len,StandardCharsets.UTF_8));p+=len;}return result;}
+ @Test void fiveFieldsUseUtf8LengthsAndOriginalTotals(){var m=sample();m.put("issuer",Map.of("name","شركة اختبار","taxNumber","301151675900003"));var fields=decode(InvoicePhaseOneQr.encode(m,Instant.parse("2026-10-31T09:00:00Z")));assertEquals(5,fields.size());assertEquals("شركة اختبار",fields.get(1));assertEquals("301151675900003",fields.get(2));assertEquals("2026-10-31T09:00:00Z",fields.get(3));assertEquals("11500.00",fields.get(4));assertEquals("1500.00",fields.get(5));}
+ @Test void discountsAndMixedTaxRatesMatchOriginalInvoice(){var m=sample();m.put("lines",List.of(Map.of("quantity",2,"unitPrice","100.00","discountPercent",10,"taxPercent",15),Map.of("quantity",1,"unitPrice","20.00","taxPercent",0)));var fields=decode(InvoicePhaseOneQr.encode(m,Instant.EPOCH));assertEquals("227.00",fields.get(4));assertEquals("27.00",fields.get(5));}
+ @Test void missingVatAndTooLongUtf8NameFailClearly(){var m=sample();m.put("issuer",Map.of("name","Bad","taxNumber","123"));assertThrows(com.vehiclerental.mak.common.exception.ApiException.class,()->InvoicePhaseOneQr.encode(m,Instant.EPOCH));m.put("issuer",Map.of("name","界".repeat(100),"taxNumber","301151675900003"));assertThrows(com.vehiclerental.mak.common.exception.ApiException.class,()->InvoicePhaseOneQr.encode(m,Instant.EPOCH));}
+ @Test void qrScansFromRenderedPdfAndSurvivesPaymentChanges()throws Exception{
+  var m=sample();String payload=InvoicePhaseOneQr.encode(m,Instant.parse(m.get("issuedAt").toString()));m.put("phaseOneQr",payload);
+  byte[] pdf=new InvoicePdfService(new InvoiceTime()).render(m);
+  try(var doc=Loader.loadPDF(pdf)){assertEquals(1,doc.getNumberOfPages());var image=new PDFRenderer(doc).renderImageWithDPI(0,180);image=image.getSubimage(1175,0,250,250);int w=image.getWidth(),h=image.getHeight();var bitmap=new BinaryBitmap(new HybridBinarizer(new RGBLuminanceSource(w,h,image.getRGB(0,0,w,h,null,0,w))));assertEquals(payload,new MultiFormatReader().decode(bitmap,Map.of(DecodeHintType.TRY_HARDER,true)).getText());String text=new PDFTextStripper().getText(doc);assertTrue(text.contains("PAID"));assertTrue(text.contains("11,500.00"));assertFalse(text.contains("RENTAL ADMIN"));}
+  m.put("payments",List.of());m.put("creditedAmount",100);assertEquals(payload,m.get("phaseOneQr"));try(var doc=Loader.loadPDF(new InvoicePdfService(new InvoiceTime()).render(m))){assertTrue(new PDFTextStripper().getText(doc).contains("UNPAID"));}
+ }
+ @Test void draftsHaveNoFiscalQrAndLongDescriptionsPaginate()throws Exception{
+  var m=sample();m.put("status","Draft");m.put("issuer",Map.of());var lines=new ArrayList<Map<String,Object>>();for(int i=0;i<45;i++)lines.add(Map.of("description","Long transport description ".repeat(15),"quantity",1,"unitPrice",10,"taxPercent",15));m.put("lines",lines);
+  try(var doc=Loader.loadPDF(new InvoicePdfService(new InvoiceTime()).render(m))){assertTrue(doc.getNumberOfPages()>1);String text=new PDFTextStripper().getText(doc);assertTrue(text.contains("DRAFT INVOICE"));assertTrue(text.contains("Invoice totals"));assertFalse(text.contains("PAID /"));}
+ }
+}

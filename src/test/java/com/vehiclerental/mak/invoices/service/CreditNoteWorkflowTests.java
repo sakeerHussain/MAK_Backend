@@ -32,7 +32,7 @@ class CreditNoteWorkflowTests {
  private BigDecimal number(Object value){return new BigDecimal(value.toString());}
  @SuppressWarnings("unchecked") private List<Map<String,Object>> notes(Map<String,Object> invoice){return (List<Map<String,Object>>)invoice.get("creditNotes");}
  @Test void paidPartialCreditThenRefundKeepsZeroDebtAndOriginalCharges(){
-  Map<String,Object> invoice=create(new BigDecimal("115"),lines(),true);long id=id(invoice);Object originalLines=invoice.get("lines");
+  Map<String,Object> invoice=create(new BigDecimal("115"),lines(),true);long id=id(invoice);Object originalLines=invoice.get("lines"); Object originalQr=invoice.get("phaseOneQr");assertNotNull(originalQr);
   assertThrows(ApiException.class,()->invoices.payment(id,payment("Refund",1)));
   Map<String,Object> credited=invoices.credit(id,credit(UUID.randomUUID().toString(),23),42);
   assertEquals(0,number(credited.get("creditedAmount")).compareTo(new BigDecimal("23")));
@@ -40,7 +40,7 @@ class CreditNoteWorkflowTests {
   assertEquals(0,number(notes(credited).getFirst().get("tax")).compareTo(new BigDecimal("3")));
   assertThrows(ApiException.class,()->invoices.payment(id,payment("Refund",24)));
   Map<String,Object> refunded=invoices.payment(id,payment("Refund",23));
-  Map<?,?> summary=(Map<?,?>)refunded.get("bookingPaymentSummary");
+  assertEquals(originalQr,credited.get("phaseOneQr"));assertEquals(originalQr,refunded.get("phaseOneQr")); Map<?,?> summary=(Map<?,?>)refunded.get("bookingPaymentSummary");
   assertEquals(0,number(summary.get("invoicedAmount")).compareTo(new BigDecimal("92")));assertEquals(0,number(summary.get("refundedAmount")).compareTo(new BigDecimal("23")));
   assertTrue(sources.existsByIdRentalId(rentalId));assertThrows(ApiException.class,()->invoices.payment(id,payment("Payment",1)));
   invoices.credit(id,credit(UUID.randomUUID().toString(),92),42);Map<String,Object> settled=invoices.payment(id,payment("Refund",92));

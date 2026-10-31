@@ -33,7 +33,7 @@ class InvoiceDatePolicyTests {
     private InvoiceRecord record(String status,String dueDate) {
         InvoiceRecord record=new InvoiceRecord(); record.setId(1L); record.setKind("Corporate"); record.setStatus(status);
         record.setTotalAmount(new BigDecimal("100")); record.setPaidAmount(BigDecimal.ZERO); record.setCreatedAt(Instant.parse("2026-01-01T20:00:00Z"));
-        record.setPayload(json.writeValueAsString(Map.of("dueDate",dueDate,"paymentInstructions","Test-only cash payment instructions","issuer",Map.of("name","MAK","street","Main Road","city","Riyadh","country","Saudi Arabia"),"billTo",Map.of("name","Buyer","email","billing@example.com","street","Road","city","Riyadh","country","Saudi Arabia"))));
+        record.setPayload(json.writeValueAsString(Map.of("dueDate",dueDate,"paymentInstructions","Test-only cash payment instructions","issuer",Map.of("name","MAK","taxNumber","301151675900003","street","Main Road","city","Riyadh","country","Saudi Arabia"),"billTo",Map.of("name","Buyer","email","billing@example.com","street","Road","city","Riyadh","country","Saudi Arabia"))));
         when(invoices.lockById(1L)).thenReturn(Optional.of(record)); return record;
     }
     @Test void calendarAndTimestampDatesIgnoreServerZone() {
@@ -80,10 +80,10 @@ class InvoiceDatePolicyTests {
     }
     @Test void pdfIssueDateUsesKsaWhileDueDateRemainsDateOnly() throws Exception {
         Map<String,Object> invoice=new HashMap<>(); invoice.put("id",1); invoice.put("status","Issued"); invoice.put("invoiceNumber","INV-1");
-        invoice.put("issuedAt","2026-12-31T21:30:00Z"); invoice.put("dueDate","2027-01-15");
+        invoice.put("issuedAt","2026-12-31T21:30:00Z"); invoice.put("dueDate","2027-01-15"); invoice.put("issuer",Map.of("name","Test seller","taxNumber","301151675900003"));
         try(var doc=Loader.loadPDF(new InvoicePdfService(time("2026-12-31T21:30:00Z")).render(invoice))) {
             String text=new PDFTextStripper().getText(doc);
-            assertTrue(text.contains("Issue date (KSA)")); assertTrue(text.contains("2027-01-01")); assertTrue(text.contains("2027-01-15"));
+            assertTrue(text.contains("Issue date")); assertTrue(text.contains("2027-01-01")); assertTrue(text.contains("2027-01-15"));
         }
     }
 }
