@@ -30,7 +30,7 @@ public class SecurityConfig {
  @Bean HttpSessionSecurityContextRepository contextRepository(){return new HttpSessionSecurityContextRepository();}
  @Bean HttpSessionCsrfTokenRepository csrfRepository(){return new HttpSessionCsrfTokenRepository();}
  @Bean SecurityFilterChain security(HttpSecurity http,AccountService accounts,EmailRepository emails,HttpSessionSecurityContextRepository contexts,HttpSessionCsrfTokenRepository csrf,
- @Value("${app.auth.rate-limit:40}") int rateLimit)throws Exception{
+ @Value("${app.auth.rate-limit:40}") int rateLimit,@Value("${app.public-enquiries.rate-limit:10}") int enquiryRateLimit)throws Exception{
   http.cors(cors->{}).csrf(config->config.csrfTokenRepository(csrf).csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
    .securityContext(config->config.securityContextRepository(contexts).requireExplicitSave(true))
    .requestCache(cache->cache.disable()).formLogin(form->form.disable()).httpBasic(basic->basic.disable())
@@ -39,9 +39,11 @@ public class SecurityConfig {
    .logout(logout->logout.logoutUrl("/api/auth/logout").invalidateHttpSession(true).clearAuthentication(true).deleteCookies("RENTAL_SESSION")
     .logoutSuccessHandler((request,response,authentication)->{if(authentication!=null && authentication.getPrincipal() instanceof AccountPrincipal principal)accounts.audit(principal.id(),principal.id(),"SIGNED_OUT","Session signed out");response.setContentType("application/json");response.getWriter().write("{}");}))
    .addFilterAfter(new SessionAccountFilter(accounts),SecurityContextHolderFilter.class)
-   .addFilterBefore(new AuthRateLimitFilter(rateLimit),UsernamePasswordAuthenticationFilter.class);
+   .addFilterBefore(new AuthRateLimitFilter(rateLimit),UsernamePasswordAuthenticationFilter.class)
+   .addFilterBefore(new com.vehiclerental.mak.enquiries.PublicEnquiryRateLimitFilter(enquiryRateLimit),UsernamePasswordAuthenticationFilter.class);
   http.authorizeHttpRequests(rules->{
    rules.requestMatchers("/error").permitAll();
+   rules.requestMatchers(HttpMethod.POST,"/api/public/rental-enquiries","/api/public/contact-messages").permitAll();
    rules.requestMatchers("/api/notifications","/api/notifications/**").access((authentication,context)->new AuthorizationDecision(operates(accounts,authentication.get(),"bookings") || operates(accounts,authentication.get(),"corporate-trips")));
    rules.requestMatchers(HttpMethod.GET,"/api/auth/config","/api/auth/csrf","/api/auth/me","/api/auth/invitation").permitAll();
    rules.requestMatchers(HttpMethod.POST,"/api/auth/signup","/api/auth/login","/api/auth/forgot-password","/api/auth/reset-password").permitAll();
