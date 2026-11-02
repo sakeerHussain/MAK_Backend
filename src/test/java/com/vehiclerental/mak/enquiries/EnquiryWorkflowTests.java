@@ -27,6 +27,12 @@ class EnquiryWorkflowTests {
   assertEquals(customers,jdbc.queryForObject("select count(*) from customers",Long.class));assertEquals(rentals,jdbc.queryForObject("select count(*) from rental_records",Long.class));
   mvc.perform(get("/api/enquiries")).andExpect(status().isUnauthorized());mvc.perform(get("/api/enquiries/"+saved.id())).andExpect(status().isUnauthorized());mvc.perform(get("/api/public/contact-messages")).andExpect(status().isUnauthorized());
  }
+ @Test void publicFleetRoutesRemainUnavailableWhileIntegrationIsWithheld()throws Exception{
+  for(String path:List.of("/api/public/vehicles","/api/public/vehicles/1/images/1")){
+   mvc.perform(get(path)).andExpect(status().isUnauthorized());
+   mvc.perform(get(path).session(session(admin))).andExpect(status().isForbidden());
+  }
+ }
  @Test void publicFormRequiresCsrfAndSupportsAnonymousCsrfSession()throws Exception{
   mvc.perform(post("/api/public/contact-messages").contentType("application/json").content(json.writeValueAsString(contact()))).andExpect(status().isForbidden());
   var tokenResult=mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk()).andReturn();var token=json.readTree(tokenResult.getResponse().getContentAsString());
