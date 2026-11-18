@@ -8,11 +8,14 @@ import com.vehiclerental.mak.notifications.email.service.EmailService;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 import java.util.*;
+import java.util.regex.Pattern;
+import java.awt.geom.Rectangle2D;
 import java.math.BigDecimal;
 import java.nio.file.*;
 import org.junit.jupiter.api.Test;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.PDFTextStripperByArea;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.mail.MailSendException;
@@ -48,8 +51,45 @@ class EmailAndPdfTests {
         assertEquals("%PDF",new String(bytes,0,4,java.nio.charset.StandardCharsets.US_ASCII));
         try(var doc=Loader.loadPDF(bytes)) {
             assertTrue(doc.getNumberOfPages()>2);
-            String text=new PDFTextStripper().getText(doc);
-            for(String label:List.of("SELLER AND BUYER DETAILS","LINE ITEMS","INVOICE TOTALS","TAX SUMMARY","ACCOUNT DETAILS","SA0000000000000000000000","4657.50","4627.50","group 45")) assertTrue(text.contains(label),label);
+            String text=new PDFTextStripper().getText(doc).replaceAll("\\s+"," ");
+            for(String label:List.of("Tax Invoice","Seller","Buyer","Invoice items","Description",
+                    "Invoice totals","Payment history","Tax summary","Bank details","Receiving account",
+                    "Notes","Booking references"))
+                assertTrue(text.contains(label),"Missing current invoice section: "+label);
+            for(String detail:List.of("INV-9001","PO-2026","2026-10-30","30 days",
+                    "MAK Car Rental","King Fahd Road","300000000000003",
+                    "Example Engineering Company","Prince Turki Street","310000000000003",
+                    "Example Bank","1234567890",
+                    "Accounts Department","Thank you for your business.","CT-3010"))
+                assertTrue(text.contains(detail),"Missing invoice detail: "+detail);
+            // The bank column wraps the long IBAN; preserve every character while allowing line breaks.
+            assertTrue(text.replace(" ","").contains("SA0000000000000000000000"),"Missing complete IBAN.");
+            // Independent fixture expectations: 45 x (100 - 10%) = 4,050;
+            // VAT 15% = 607.50; total = 4,657.50; payment 30 leaves 4,627.50.
+            for(String[] amount:List.of(new String[]{"Subtotal","4,050.00"},new String[]{"VAT","607.50"},
+                    new String[]{"Invoice total","4,657.50"},new String[]{"Net received","30.00"},
+                    new String[]{"Balance due","4,627.50"}))
+                assertTrue(Pattern.compile("\\b"+Pattern.quote(amount[0])+"\\b[^0-9]*"
+                        +Pattern.quote(amount[1])+"\\b").matcher(text).find(),
+                        "Incorrect or missing "+amount[0]+": expected "+amount[1]);
+            assertTrue(text.contains("PARTIALLY PAID"),"The opening payment must leave a balance.");
+            var pages=new PDFTextStripper();
+            var descriptions=new StringBuilder();
+            for(int page=1;page<=doc.getNumberOfPages();page++) {
+                pages.setStartPage(page);pages.setEndPage(page);
+                String pageText=pages.getText(doc).replaceAll("\\s+"," ");
+                assertTrue(pageText.contains("INV-9001"),"Missing invoice reference on page "+page);
+                assertTrue(pageText.contains("Page "+page),"Missing page number on page "+page);
+                // Follow wrapped descriptions across pages without intervening headers or amount columns.
+                var columns=new PDFTextStripperByArea();
+                columns.addRegion("description",new Rectangle2D.Float(52,172,185,620));
+                columns.extractRegions(doc.getPage(page-1));
+                descriptions.append(columns.getTextForRegion("description")).append(' ');
+            }
+            String descriptionText=descriptions.toString().replaceAll("\\s+"," ");
+            for(int group=1;group<=45;group++)
+                assertTrue(Pattern.compile("\\bgroup "+group+"\\b").matcher(descriptionText).find(),
+                        "Missing charge description for passenger group "+group);
         }
         Path sample=Path.of("target/pdf-qa/invoice-sample.pdf");Files.createDirectories(sample.getParent());Files.write(sample,pdf.render(invoice(9001,4)));
         Files.write(sample.resolveSibling("invoice-long.pdf"),bytes);
