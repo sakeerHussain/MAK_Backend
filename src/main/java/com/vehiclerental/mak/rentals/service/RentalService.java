@@ -365,7 +365,7 @@ public class RentalService {
         Map<String, Object> extras = json.readValue(quote.getExtrasJson(), new TypeReference<Map<String, Object>>() {});
         List<Map<String, Object>> canonical = new ArrayList<>();
         BigDecimal base = money(rule.get("amount"));
-        canonical.add(Map.of("description", from + (via.isBlank() ? "" : " Ã¢â€ â€™ " + via) + " Ã¢â€ â€™ " + to + " Ã‚Â· " + text(rule.get("vehicle")),
+        canonical.add(Map.of("description", routeDescription(from, via, to, text(rule.get("vehicle"))),
                 "unit", "Trip", "quantity", 1, "unitPrice", base, "ruleId", text(rule.get("id"))));
         BigDecimal subtotal = base;
         BigDecimal km = nonNegative(data.getOrDefault("extraKm", 0));
@@ -537,6 +537,11 @@ public class RentalService {
             driver.setBookingCount((int) rentals.countByDriverId(driver.getId()));
             drivers.save(driver);
         }
+    }
+    /** Matches the frontend quote preview: "From → Via → To · Vehicle". Escapes keep the source encoding-safe. */
+    static String routeDescription(String from, String via, String to, String vehicle) {
+        String arrow = " \u2192 ";
+        return from + (via == null || via.isBlank() ? "" : arrow + via) + arrow + to + " \u00B7 " + vehicle;
     }
     private BigDecimal money(Object value) {
         try { BigDecimal n = new BigDecimal(text(value)); if (n.stripTrailingZeros().scale() > 2 || n.abs().compareTo(new BigDecimal("999999999999.99")) > 0) throw bad("Invalid amount."); return n; }
