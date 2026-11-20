@@ -51,6 +51,8 @@ public class SecurityConfig {
    rules.requestMatchers(HttpMethod.GET,"/api/dashboard").access(permission(accounts,"dashboard.read"));
     rules.requestMatchers(HttpMethod.GET,"/api/security-audit").access(permission(accounts,"audit.read"));
    rules.requestMatchers(HttpMethod.POST,"/api/vehicles/import-drafts","/api/vehicles/import-drafts/*/complete").access(permission(accounts,"fleet.create"));
+   rules.requestMatchers(HttpMethod.GET,"/api/rate-cards","/api/rate-cards/**").access(permission(accounts,"pricing.read"));
+   rules.requestMatchers("/api/rate-cards","/api/rate-cards/**").access(permission(accounts,"pricing.write"));
    for(String module:Permissions.MODULES){String resource=module.equals("fleet")?"vehicles":module;rules.requestMatchers(HttpMethod.GET,"/api/"+resource,"/api/"+resource+"/**").access(permission(accounts,module+".read"));rules.requestMatchers(HttpMethod.HEAD,"/api/"+resource,"/api/"+resource+"/**").access(permission(accounts,module+".read"));rules.requestMatchers("/api/"+resource,"/api/"+resource+"/**").access((authentication,context)->{
      var req=context.getRequest();String path=req.getRequestURI().substring(req.getContextPath().length());String verb=req.getMethod();String tail=path.substring(("/api/"+resource).length());String action="DELETE".equals(verb)?"archive":"POST".equals(verb)&&(tail.isEmpty()||tail.equals("/save")||tail.equals("/import"))?"create":"edit";
      if(module.equals("fleet")&&"POST".equals(verb)&&(tail.equals("/import-drafts")||tail.matches("/import-drafts/[^/]+/complete")))action="create";
