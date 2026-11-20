@@ -165,8 +165,7 @@ class RbacEnforcementTests {
  @Test void fleetDocumentsOpenInlineOrDownloadWithTheSameReadPermission()throws Exception{
   var vehicle=new com.vehiclerental.mak.fleet.entity.Vehicle();String key=UUID.randomUUID().toString();
   vehicle.setRegistration("PDF-"+key);vehicle.setVehicleId("PDF-"+key);vehicle.setMake("QA");vehicle.setModel("File access");
-  vehicle.setYear(2026);vehicle.setType("Sedan");vehicle.setSeats(5);vehicle.setTransmission("Automatic");vehicle.setFuelType("Petrol");
-  vehicle.setDailyRate(BigDecimal.TEN);vehicle.setRateCurrency("SAR");vehicle.setOwnership("Owned");vehicle.setStatus("Inactive");
+  vehicle.setYear(2026);vehicle.setType("Sedan");vehicle.setSeats(5);vehicle.setTransmission("Automatic");vehicle.setFuelType("Petrol");vehicle.setOwnership("Owned");vehicle.setStatus("Inactive");
   fleetVehicles.saveAndFlush(vehicle);
   String filename="Istimara café 2026.pdf";byte[] pdf="%PDF-1.7\nQA isolated file fixture".getBytes(java.nio.charset.StandardCharsets.UTF_8);
   var document=fleetFiles.uploadDocument(vehicle.getId(),"Others",null,new org.springframework.mock.web.MockMultipartFile("file",filename,"application/pdf",pdf));
@@ -204,7 +203,7 @@ class RbacEnforcementTests {
  }
  @Test void utilizationQueryIncludesBothRentalKindsButNotUnassignedRecords(){
   var vehicle=new com.vehiclerental.mak.fleet.entity.Vehicle();String key=UUID.randomUUID().toString();
-  vehicle.setRegistration("USE-"+key);vehicle.setVehicleId("USE-"+key);vehicle.setMake("QA");vehicle.setModel("Utilization");vehicle.setYear(2026);vehicle.setType("Bus");vehicle.setSeats(35);vehicle.setTransmission("Manual");vehicle.setFuelType("Diesel");vehicle.setDailyRate(BigDecimal.TEN);vehicle.setRateCurrency("SAR");vehicle.setOwnership("Owned");vehicle.setStatus("Inactive");fleetVehicles.saveAndFlush(vehicle);
+  vehicle.setRegistration("USE-"+key);vehicle.setVehicleId("USE-"+key);vehicle.setMake("QA");vehicle.setModel("Utilization");vehicle.setYear(2026);vehicle.setType("Bus");vehicle.setSeats(35);vehicle.setTransmission("Manual");vehicle.setFuelType("Diesel");vehicle.setOwnership("Owned");vehicle.setStatus("Inactive");fleetVehicles.saveAndFlush(vehicle);
   for(String kind:List.of("Individual","Corporate"))for(String status:List.of("Active","Completed","Pending","Confirmed","Cancelled")){
    var row=new RentalRecord();row.setReference("USE-"+UUID.randomUUID());row.setKind(kind);row.setBookingType("Quick");row.setStatus(status);row.setVehicleId(vehicle.getId());row.setPickupAt(LocalDateTime.now().minusDays(1));row.setReturnAt(LocalDateTime.now());row.setTotalAmount(BigDecimal.TEN);row.setReceivedAmount(BigDecimal.ZERO);row.setRefundedAmount(BigDecimal.ZERO);row.setPayload("{}");row.setCreatedAt(Instant.now());rentals.saveAndFlush(row);
   }

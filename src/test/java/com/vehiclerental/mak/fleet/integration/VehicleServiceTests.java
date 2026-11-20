@@ -35,7 +35,6 @@ class VehicleServiceTests {
     private VehicleRequest request(String registration, String businessId) {
         return new VehicleRequest("Toyota", "Camry", registration, 2024, "Silver", businessId,
                 "D-12", "JT123456789012345", "Sedan", 5, "Automatic", "Hybrid", List.of("GPS", "Bluetooth"),
-                new BigDecimal("12.00"), new BigDecimal("72.00"), new BigDecimal("1800.00"), "USD",
                 "Owned", null, "Available", "Unassigned", true, true, false,
                 10000L, 25000L, 30000L, 10000L, 25000L, 40000L, 10000L, 30000L, 10000L, null, null, null);
     }
@@ -64,7 +63,7 @@ class VehicleServiceTests {
         VehicleRequest duplicate = request(created.details().registration().toLowerCase(), "VH-ANOTHER-" + created.id());
         assertEquals(org.springframework.http.HttpStatus.CONFLICT, assertThrows(ApiException.class, () -> vehicles.create(duplicate)).status());
         VehicleRequest invalid = new VehicleRequest("Toyota", "Camry", "RNT-BAD", 2024, null, "VH-BAD", null, null,
-                "Sedan", 5, "Automatic", "Petrol", List.of(), null, BigDecimal.TEN, null, "USD",
+                "Sedan", 5, "Automatic", "Petrol", List.of(),
                 "Vendor", null, "Available", null, true, true, false,
                 10000L, 35000L, 30000L, null, null, null, null, null, null, null, null, null);
         assertEquals(org.springframework.http.HttpStatus.BAD_REQUEST, assertThrows(ApiException.class, () -> vehicles.create(invalid)).status());

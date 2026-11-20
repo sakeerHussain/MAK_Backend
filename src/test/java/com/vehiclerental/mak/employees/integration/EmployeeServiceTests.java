@@ -32,7 +32,7 @@ class EmployeeServiceTests {
  @Autowired EmployeeSaveService saves;@Autowired EmployeeImportService imports;@Autowired ObjectMapper json;@Autowired WebApplicationContext context;
  @Autowired VendorRepository vendors; @Autowired com.vehiclerental.mak.auth.repository.AccountRepository accountRecords;
  @Autowired VendorService vendorService;
- private Map<String,Object> details(){String suffix=UUID.randomUUID().toString().substring(0,8);Map<String,Object> r=new LinkedHashMap<>(Map.of("employeeId","EMP-"+suffix,"name","Test Employee","phone","+96650"+Integer.toUnsignedString(suffix.hashCode()),"jobTitle","Fleet Coordinator","department","Fleet","category","Technical","employmentType","Full-time","status","Active","monthlySalary",6500));r.put("hourlyRate",25);r.put("dailyRate",200);r.put("nationality","Indian");r.put("homeAddress","Kochi, India");r.put("passportNumber","P-123");r.put("joinedOn","2025-01-15");return r;}
+ private Map<String,Object> details(){String suffix=UUID.randomUUID().toString().substring(0,8);Map<String,Object> r=new LinkedHashMap<>(Map.of("employeeId","EMP-"+suffix,"name","Test Employee","phone","+96650"+Integer.toUnsignedString(suffix.hashCode()),"jobTitle","Fleet Coordinator","department","Fleet","category","Technical","employmentType","Full-time","status","Active"));r.put("hourlyRate",25);r.put("dailyRate",200);r.put("nationality","Indian");r.put("homeAddress","Kochi, India");r.put("passportNumber","P-123");r.put("joinedOn","2025-01-15");return r;}
  private EmployeeRequest request(Map<String,Object> data){return json.convertValue(data,EmployeeRequest.class);}
  private MockMultipartFile image(String key){return new MockMultipartFile(key,"profile.png","image/png",new byte[]{(byte)137,80,78,71,13,10,26,10,1,2});}
  @Test void createsFiltersUpdatesAndProtectsPayrollHistory(){
@@ -70,7 +70,7 @@ class EmployeeServiceTests {
   var cleared=new MockMultipartFile("attachments","","application/json",json.writeValueAsBytes(Map.of("documents",List.of())));
   mvc.perform(multipart("/api/employees/"+id+"/save").file(record).file(cleared).with(request->{request.setMethod("PUT");return request;})).andExpect(status().isOk());
   assertTrue(employees.get(id).documents().isEmpty());mvc.perform(get(url)).andExpect(status().isNotFound());
-  data.put("monthlySalary",-1);mvc.perform(post("/api/employees").contentType("application/json").content(json.writeValueAsBytes(data))).andExpect(status().isBadRequest());
+  data.put("employeeId","EMP-"+UUID.randomUUID().toString().substring(0,8));data.put("yearsExperience",-1);mvc.perform(post("/api/employees").contentType("application/json").content(json.writeValueAsBytes(data))).andExpect(status().isBadRequest());
  }
  @Test void linkedEmployeeProtectsVendorFromDeletion(){
   String name="Employee Supplier "+UUID.randomUUID();var vendor=new Vendor();vendor.setVendorType("Business");vendor.setName(name);vendor.setNameKey(name.toUpperCase());vendor.setCommission(java.math.BigDecimal.ZERO);vendor.setStatus("Active");vendor.setCreditTerms(30);vendor.setCurrency("SAR");vendors.saveAndFlush(vendor);

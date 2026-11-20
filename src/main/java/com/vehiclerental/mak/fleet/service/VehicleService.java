@@ -149,10 +149,6 @@ public class VehicleService {
         vehicle.setTransmission(request.transmission());
         vehicle.setFuelType(request.fuelType());
         vehicle.setFeatureTags(request.featureTags() == null ? new ArrayList<>() : request.featureTags().stream().map(String::trim).filter(tag -> !tag.isEmpty()).distinct().collect(Collectors.toCollection(ArrayList::new)));
-        vehicle.setHourlyRate(request.hourlyRate());
-        vehicle.setDailyRate(request.dailyRate());
-        vehicle.setMonthlyRate(request.monthlyRate());
-        vehicle.setRateCurrency(request.rateCurrency());
         vehicle.setOwnership(request.ownership());
         vehicle.setVendor("Vendor".equals(request.ownership()) ? trim(request.vendor()) : null);
         vehicle.setStatus(request.status());
@@ -178,8 +174,7 @@ public class VehicleService {
         VehicleRequest details = new VehicleRequest(vehicle.getMake(), vehicle.getModel(), vehicle.getRegistration(),
                 vehicle.getYear(), vehicle.getColor(), vehicle.getVehicleId(), vehicle.getDoorNo(), vehicle.getChassisNo(),
                 vehicle.getType(), vehicle.getSeats(), vehicle.getTransmission(), vehicle.getFuelType(),
-                List.copyOf(vehicle.getFeatureTags()), vehicle.getHourlyRate(), vehicle.getDailyRate(), vehicle.getMonthlyRate(),
-                vehicle.getRateCurrency(), vehicle.getOwnership(), vehicle.getVendor(), vehicle.getStatus(), vehicle.getCustodian(),
+                List.copyOf(vehicle.getFeatureTags()), vehicle.getOwnership(), vehicle.getVendor(), vehicle.getStatus(), vehicle.getCustodian(),
                 vehicle.isOnSite(), vehicle.isListedForBooking(), vehicle.isShowOnPublicSite(), vehicle.getServiceIntervalKm(),
                 vehicle.getLastServiceKm(), vehicle.getCurrentOdometerKm(), vehicle.getOilIntervalKm(), vehicle.getLastOilKm(),
                 vehicle.getTyreIntervalKm(), vehicle.getLastTyreKm(), vehicle.getBrakeIntervalKm(), vehicle.getLastBrakeKm(),

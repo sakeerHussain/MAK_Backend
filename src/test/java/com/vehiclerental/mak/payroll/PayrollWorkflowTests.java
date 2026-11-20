@@ -43,7 +43,7 @@ class PayrollWorkflowTests {
     @BeforeEach void setup() {
         admin = account("Admin", null);
         employee = new Employee(); employee.setEmployeeId("PAY-"+UUID.randomUUID().toString().substring(0,8)); employee.setName("Payroll Test Staff");
-        employee.setPhone("+966500000001"); employee.setPhoneKey(UUID.randomUUID().toString()); employee.setCategory("Technical"); employee.setJobTitle("Driver"); employee.setDepartment("Transport"); employee.setEmploymentType("Full-time"); employee.setStatus("Active"); employee.setMonthlySalary(bd("9999")); employees.saveAndFlush(employee);
+        employee.setPhone("+966500000001"); employee.setPhoneKey(UUID.randomUUID().toString()); employee.setCategory("Technical"); employee.setJobTitle("Driver"); employee.setDepartment("Transport"); employee.setEmploymentType("Full-time"); employee.setStatus("Active"); employees.saveAndFlush(employee);
         mvc = MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();
     }
     Account account(String role, Long custom) { var a=new Account(); a.setName("Payroll test"); a.setEmail(UUID.randomUUID()+"@example.invalid"); a.setRole(role); a.setCustomRoleId(custom); a.setPasswordHash("test-no-login"); a.setStatus("Active"); a.setCreatedAt(Instant.now()); return accounts.saveAndFlush(a); }
@@ -61,7 +61,6 @@ class PayrollWorkflowTests {
     @Test void exampleCalculatesEntitlementWithoutTreatingBankAllocationAsDeduction() {
         var saved=saveProfile(); var draft=prepare(saved,"2026-07");
         assertEquals(bd("1800.00"), totals(draft).cashEarnings()); assertEquals(bd("1800.00"), totals(draft).netCash()); assertEquals(bd("800.00"), totals(draft).fixedBankAmount()); assertEquals(bd("0.00"), totals(draft).deductions()); assertEquals("Draft",draft.get("status"));
-        assertEquals(bd("9999"), employees.findById(employee.getId()).orElseThrow().getMonthlySalary());
     }
     @Test void noncashBenefitsDoNotIncreaseCashEntitlementAndAdjustmentsUseDecimalArithmetic() {
         var p=profile("2026-07"); p=change(p,null,p.effectiveMonth(),p.basicSalary(),p.fixedBankAmount(),List.of(new Component("Room",bd("500"),"BENEFIT"),new Component("Food",bd("400"),"CASH")));
@@ -116,7 +115,7 @@ class PayrollWorkflowTests {
     }
     @Test void duplicateStaffNumberAcrossEmployeeAndDriverCannotCreateSecondPayee() {
         saveProfile();
-        jdbc.update("insert into drivers(employee_id,name,phone,phone_key,category,designation,employment_type,status,daily_rate,booking_count,payment_count,archived) values(?,?,?,?,?,?,?,?,?,0,0,false)",employee.getEmployeeId(),"Driver duplicate","+966500000002",UUID.randomUUID().toString(),"Light","Driver","Full-time","Active",bd("100"));
+        jdbc.update("insert into drivers(employee_id,name,phone,phone_key,category,designation,employment_type,status,booking_count,payment_count,archived) values(?,?,?,?,?,?,?,?,0,0,false)",employee.getEmployeeId(),"Driver duplicate","+966500000002",UUID.randomUUID().toString(),"Light","Driver","Full-time","Active");
         long driverId=jdbc.queryForObject("select id from drivers where employee_id=?",Long.class,employee.getEmployeeId());
         var p=profile("2026-07");var duplicate=new ProfileRequest(null,"DRIVER",driverId,p.effectiveMonth(),p.basicSalary(),p.fixedBankAmount(),"","","","",p.components(),"");
         assertEquals(409,assertThrows(ApiException.class,()->payroll.saveProfile(null,duplicate,admin.getId())).status().value());

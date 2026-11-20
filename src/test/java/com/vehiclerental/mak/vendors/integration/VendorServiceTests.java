@@ -95,7 +95,6 @@ class VendorServiceTests {
         driver.setName("Linked Driver"); driver.setPhone("+966500" + key);
         driver.setPhoneKey("966500" + key); driver.setCategory("Chauffeur"); driver.setDesignation("Driver");
         driver.setEmploymentType("Vendor"); driver.setVendor(vendor.name()); driver.setStatus("Active");
-        driver.setDailyRate(new BigDecimal("100"));
         drivers.saveAndFlush(driver);
         assertEquals(1, vendors.get(vendor.id()).referenceCount());
         assertEquals(HttpStatus.CONFLICT, assertThrows(ApiException.class, () -> vendors.update(vendor.id(),

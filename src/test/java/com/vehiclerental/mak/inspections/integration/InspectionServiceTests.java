@@ -34,7 +34,7 @@ class InspectionServiceTests {
     private Vehicle car(){
         String suffix=UUID.randomUUID().toString().substring(0,8);var v=new Vehicle();
         v.setRegistration("I-"+suffix);v.setVehicleId("VI-"+suffix);v.setMake("Toyota");v.setModel("Camry");v.setYear(2025);v.setType("Sedan");v.setSeats(5);
-        v.setTransmission("Automatic");v.setFuelType("Petrol");v.setDailyRate(new BigDecimal("200"));v.setRateCurrency("SAR");v.setOwnership("Owned");v.setStatus("Available");v.setCurrentOdometerKm(12000L);v.setLastOilKm(10000L);return vehicles.saveAndFlush(v);
+        v.setTransmission("Automatic");v.setFuelType("Petrol");v.setOwnership("Owned");v.setStatus("Available");v.setCurrentOdometerKm(12000L);v.setLastOilKm(10000L);return vehicles.saveAndFlush(v);
     }
     private Map<String,Object> data(long car){return new LinkedHashMap<>(Map.of("vehicleId",car,"type","Pre-trip","condition","Good","inspectionDate",LocalDate.now().toString(),"inspector","  Test Inspector  ","odometerKm",13000,"fuelLevel",75,"notes","  Condition checked  ","photos",List.of()));}
     private Map<String,Object> save(Long id,Map<String,Object> data){return service.save(id,json.convertValue(data,InspectionRequest.class),new LinkedMultiValueMap<>());}

@@ -35,7 +35,7 @@ class AssignmentAlertWorkflowTests {
   }
   return data;
  }
- Vehicle car(){var v=new Vehicle();String key=UUID.randomUUID().toString();v.setRegistration(key);v.setVehicleId(key);v.setMake("Toyota");v.setModel("Camry");v.setYear(2026);v.setType("Sedan");v.setSeats(5);v.setTransmission("Automatic");v.setFuelType("Petrol");v.setDailyRate(BigDecimal.valueOf(100));v.setRateCurrency("SAR");v.setOwnership("Owned");v.setListedForBooking(true);v.setStatus("Available");v.setOnSite(true);return vehicles.saveAndFlush(v);}
+ Vehicle car(){var v=new Vehicle();String key=UUID.randomUUID().toString();v.setRegistration(key);v.setVehicleId(key);v.setMake("Toyota");v.setModel("Camry");v.setYear(2026);v.setType("Sedan");v.setSeats(5);v.setTransmission("Automatic");v.setFuelType("Petrol");v.setOwnership("Owned");v.setListedForBooking(true);v.setStatus("Available");v.setOnSite(true);return vehicles.saveAndFlush(v);}
  @ParameterizedTest @ValueSource(strings={"Individual","Corporate"})
  void savesKsaTimeAndRejectsInvalidOrLateAlerts(String kind){
   var data=request(kind);data.put("assignmentAlertAt",now.plusDays(5).minusHours(7).atOffset(ZoneOffset.UTC).toString());
@@ -67,7 +67,7 @@ class AssignmentAlertWorkflowTests {
  @Autowired com.vehiclerental.mak.drivers.repository.DriverFileRepository driverFiles;
  com.vehiclerental.mak.drivers.entity.Driver driver() {
   var d=new com.vehiclerental.mak.drivers.entity.Driver();var key=UUID.randomUUID().toString();
-  d.setEmployeeId(key);d.setName("Compliance QA");d.setPhone("0500000001");d.setPhoneKey(key);d.setCategory("Chauffeur");d.setDesignation("Driver");d.setEmploymentType("Full-time");d.setStatus("Active");d.setDailyRate(BigDecimal.TEN);return driverRepo.saveAndFlush(d);
+  d.setEmployeeId(key);d.setName("Compliance QA");d.setPhone("0500000001");d.setPhoneKey(key);d.setCategory("Chauffeur");d.setDesignation("Driver");d.setEmploymentType("Full-time");d.setStatus("Active");return driverRepo.saveAndFlush(d);
  }
  void driverDocs(com.vehiclerental.mak.drivers.entity.Driver d, LocalDate expiry) {
   for(var type:List.of("Iqama","License copy")) {

@@ -37,8 +37,7 @@ class DriverServiceTests {
     private DriverRequest request(String employeeId, String phone) {
         return new DriverRequest(employeeId, "Amina Malik", phone, "amina@example.com", "Chauffeur", "Saudi Arabian",
                 "Driver", "IQ-123", LocalDate.now().plusYears(2), 5, "Full-time", null, "Active", "C-25",
-                LocalDate.of(2025, 1, 15), "+966501234567", new BigDecimal("25.00"), new BigDecimal("180.00"),
-                new BigDecimal("3500.00"), "P-123", LocalDate.now().plusYears(2), "CT-77",
+                LocalDate.of(2025, 1, 15), "+966501234567", "P-123", LocalDate.now().plusYears(2), "CT-77",
                 LocalDate.now().plusYears(1), "LIC-77", LocalDate.now().plusYears(1), "O+", "IN-77",
                 LocalDate.now().plusYears(1), "+966555000001", "+919900000001", "Riyadh, Saudi Arabia");
     }

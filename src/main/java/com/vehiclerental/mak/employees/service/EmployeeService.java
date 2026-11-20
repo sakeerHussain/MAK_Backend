@@ -136,9 +136,6 @@ public class EmployeeService {
         d.setCompanyId(trim(r.companyId()));
         d.setJoinedOn(r.joinedOn());
         d.setOfficialNumber(trim(r.officialNumber()));
-        d.setHourlyRate(r.hourlyRate());
-        d.setDailyRate(r.dailyRate());
-        d.setMonthlySalary(r.monthlySalary());
         d.setPassportNumber(trim(r.passportNumber()));
         d.setPassportExpiry(r.passportExpiry());
         d.setContractId(trim(r.contractId()));
@@ -157,7 +154,7 @@ public class EmployeeService {
         EmployeeRequest details = new EmployeeRequest(d.getEmployeeId(), d.getName(), d.getPhone(), d.getEmail(),
                 d.getCategory(), d.getNationality(), d.getJobTitle(), d.getDepartment(), d.getManager(), d.getIdNumber(), d.getIqamaExpiry(),
                 d.getYearsExperience(), d.getEmploymentType(), d.getVendor(), d.getStatus(), d.getCompanyId(),
-                d.getJoinedOn(), d.getOfficialNumber(), d.getHourlyRate(), d.getDailyRate(), d.getMonthlySalary(),
+                d.getJoinedOn(), d.getOfficialNumber(),
                 d.getPassportNumber(), d.getPassportExpiry(), d.getContractId(), d.getContractExpiry(),
                 d.getLicenceNumber(), d.getLicenceExpiry(), d.getBloodGroup(), d.getInsuranceNumber(),
                 d.getInsuranceExpiry(), d.getEmergencyKsa(), d.getEmergencyHome(), d.getHomeAddress());

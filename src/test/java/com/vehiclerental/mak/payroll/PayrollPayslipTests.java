@@ -39,7 +39,7 @@ class PayrollPayslipTests {
     static BigDecimal bd(String s){return new BigDecimal(s);}
     @BeforeEach void setup(){
         admin=account("Admin",null);
-        var employee=new Employee();employee.setEmployeeId("PAYSLIP-"+UUID.randomUUID().toString().substring(0,8));employee.setName("Payslip QA Employee");employee.setPhone("+966500000099");employee.setPhoneKey(UUID.randomUUID().toString());employee.setCategory("Technical");employee.setJobTitle("Driver");employee.setDepartment("Transport");employee.setEmploymentType("Full-time");employee.setStatus("Active");employee.setMonthlySalary(bd("0"));employees.saveAndFlush(employee);
+        var employee=new Employee();employee.setEmployeeId("PAYSLIP-"+UUID.randomUUID().toString().substring(0,8));employee.setName("Payslip QA Employee");employee.setPhone("+966500000099");employee.setPhoneKey(UUID.randomUUID().toString());employee.setCategory("Technical");employee.setJobTitle("Driver");employee.setDepartment("Transport");employee.setEmploymentType("Full-time");employee.setStatus("Active");employees.saveAndFlush(employee);
         var profile=payroll.saveProfile(null,new ProfileRequest(null,"EMPLOYEE",employee.getId(),"2026-07",bd("800"),bd("800"),"PRIVATE ACCOUNT HOLDER","PRIVATE BANK","","PRIVATE ACCOUNT NUMBER",List.of(new Component("Food",bd("400"),"CASH"),new Component("Profession",bd("300"),"CASH"),new Component("Performance",bd("300"),"CASH"),new Component("Room provided",bd("500"),"BENEFIT")),"PRIVATE PROFILE NOTE"),admin.getId());
         id=((Number)payroll.prepare(new DraftRequest("2026-07",List.of(((Number)profile.get("payeeId")).longValue())),admin.getId()).getFirst().get("id")).longValue();
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();

@@ -122,7 +122,8 @@ public class PayrollService {
     }
 
     private List<Map<String,Object>> roster() {
-        var staff = jdbc.queryForList("select 'EMPLOYEE' as staff_type,id as staff_id,employee_id as staff_number,name,status,department,joined_on,monthly_salary as reference_rate,employment_type from employees where archived=false union all select 'DRIVER',id,employee_id,name,status,category,joined_on,monthly_rate,employment_type from drivers where archived=false order by name");
+        // Profile rates were retired (V23); the payroll salary profile is the only source of pay.
+        var staff = jdbc.queryForList("select 'EMPLOYEE' as staff_type,id as staff_id,employee_id as staff_number,name,status,department,joined_on,employment_type from employees where archived=false union all select 'DRIVER',id,employee_id,name,status,category,joined_on,employment_type from drivers where archived=false order by name");
         var payees = jdbc.queryForList("select * from payroll_payees");
         for (var person : staff) {
             var payee = payees.stream().filter(p -> p.get("staff_type").equals(person.get("staff_type")) && number(p,"staff_id") == number(person,"staff_id")).findFirst();
@@ -132,7 +133,7 @@ public class PayrollService {
         }
         return staff.stream().map(person -> {
             var data = new LinkedHashMap<String,Object>();
-            for (var field : Map.of("staffType","staff_type","staffId","staff_id","staffNumber","staff_number","name","name","status","status","department","department","joinedOn","joined_on","referenceRate","reference_rate","employmentType","employment_type","payeeId","payeeId").entrySet()) data.put(field.getKey(), person.get(field.getValue()));
+            for (var field : Map.of("staffType","staff_type","staffId","staff_id","staffNumber","staff_number","name","name","status","status","department","department","joinedOn","joined_on","employmentType","employment_type","payeeId","payeeId").entrySet()) data.put(field.getKey(), person.get(field.getValue()));
             data.put("duplicateStaffNumber", person.get("duplicateStaffNumber"));
             return (Map<String,Object>) data;
         }).toList();

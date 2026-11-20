@@ -1,6 +1,5 @@
 package com.vehiclerental.mak.employees.entity;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -36,9 +35,6 @@ public class Employee {
     private String companyId;
     private LocalDate joinedOn;
     private String officialNumber;
-    @Column(precision = 12, scale = 2) private BigDecimal hourlyRate;
-    @Column(precision = 12, scale = 2) private BigDecimal dailyRate;
-    @Column(nullable = false, precision = 12, scale = 2) private BigDecimal monthlySalary;
     private String passportNumber;
     private LocalDate passportExpiry;
     private String contractId;

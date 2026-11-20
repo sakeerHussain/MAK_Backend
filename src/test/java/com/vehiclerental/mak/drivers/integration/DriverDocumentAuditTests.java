@@ -25,7 +25,7 @@ class DriverDocumentAuditTests {
  @Autowired com.vehiclerental.mak.dashboard.service.DashboardInsightsService dashboard;
  final LocalDate today=LocalDate.now(ZoneId.of("Asia/Riyadh"));
  Driver driver() {
-  var d=new Driver();String key=UUID.randomUUID().toString();d.setEmployeeId(key);d.setName("Document Audit");d.setPhone("0500000001");d.setPhoneKey(key);d.setCategory("Chauffeur");d.setDesignation("Driver");d.setEmploymentType("Full-time");d.setStatus("Active");d.setDailyRate(BigDecimal.TEN);return drivers.saveAndFlush(d);
+  var d=new Driver();String key=UUID.randomUUID().toString();d.setEmployeeId(key);d.setName("Document Audit");d.setPhone("0500000001");d.setPhoneKey(key);d.setCategory("Chauffeur");d.setDesignation("Driver");d.setEmploymentType("Full-time");d.setStatus("Active");return drivers.saveAndFlush(d);
  }
  MockMultipartFile pdf(){return new MockMultipartFile("file","audit.pdf","application/pdf","%PDF-1.4 audit fixture".getBytes());}
  void ready(Driver d){for(var type:List.of("Iqama","License copy"))files.uploadDocument(d.getId(),type,today.plusYears(2),pdf());}

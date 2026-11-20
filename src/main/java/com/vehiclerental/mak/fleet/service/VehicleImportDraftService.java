@@ -19,7 +19,7 @@ import tools.jackson.core.type.TypeReference;
 
 @Service
 public class VehicleImportDraftService {
-    private static final Set<String> OPTIONAL = Set.of("year", "type", "seats", "transmission", "fuelType", "dailyRate", "ownership", "onSite");
+    private static final Set<String> OPTIONAL = Set.of("year", "type", "seats", "transmission", "fuelType", "ownership", "onSite");
     private final VehicleImportDraftRepository drafts;
     private final VehicleRepository fleet;
     private final VehicleService vehicles;

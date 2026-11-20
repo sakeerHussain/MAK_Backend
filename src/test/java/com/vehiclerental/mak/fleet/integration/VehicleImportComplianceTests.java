@@ -26,7 +26,7 @@ class VehicleImportComplianceTests {
     private VehicleRequest bus(LocalDate registration, LocalDate insurance, LocalDate inspection, String type) {
         String key = UUID.randomUUID().toString();
         return new VehicleRequest("Leyland", "Oyster", "REG-" + key, 2026, "White", "VH-" + key,
-                null, null, type, 35, "Manual", "Diesel", List.of(), null, new BigDecimal("500.00"), null, "SAR",
+                null, null, type, 35, "Manual", "Diesel", List.of(),
                 "Owned", null, "Inactive", null, false, false, false,
                 null, null, null, null, null, null, null, null, null, registration, insurance, inspection);
     }

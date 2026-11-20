@@ -1,6 +1,5 @@
 package com.vehiclerental.mak.drivers.entity;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -34,9 +33,6 @@ public class Driver {
     private String companyId;
     private LocalDate joinedOn;
     private String officialNumber;
-    @Column(precision = 12, scale = 2) private BigDecimal hourlyRate;
-    @Column(nullable = false, precision = 12, scale = 2) private BigDecimal dailyRate;
-    @Column(precision = 12, scale = 2) private BigDecimal monthlyRate;
     private String passportNumber;
     private LocalDate passportExpiry;
     private String contractId;

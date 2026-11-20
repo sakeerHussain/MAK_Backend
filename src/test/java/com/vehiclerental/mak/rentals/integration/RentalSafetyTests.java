@@ -18,7 +18,7 @@ class RentalSafetyTests {
  @Autowired VehicleRepository vehicles;
  @Autowired VehicleFileRepository files;
  Vehicle car(boolean onSite, boolean docs) {
-  var v=new Vehicle();String key=UUID.randomUUID().toString();v.setRegistration(key);v.setVehicleId(key);v.setMake("Toyota");v.setModel("Camry");v.setYear(2026);v.setType("Sedan");v.setSeats(5);v.setTransmission("Automatic");v.setFuelType("Petrol");v.setDailyRate(BigDecimal.valueOf(100));v.setRateCurrency("SAR");v.setOwnership("Owned");v.setListedForBooking(true);v.setStatus("Available");v.setOnSite(onSite);vehicles.saveAndFlush(v);if(docs)RentalReadyFixture.documents(files,v);return v;
+  var v=new Vehicle();String key=UUID.randomUUID().toString();v.setRegistration(key);v.setVehicleId(key);v.setMake("Toyota");v.setModel("Camry");v.setYear(2026);v.setType("Sedan");v.setSeats(5);v.setTransmission("Automatic");v.setFuelType("Petrol");v.setOwnership("Owned");v.setListedForBooking(true);v.setStatus("Available");v.setOnSite(onSite);vehicles.saveAndFlush(v);if(docs)RentalReadyFixture.documents(files,v);return v;
  }
  Map<String,Object> request(Vehicle v,String status){
   var now=LocalDateTime.now(ZoneId.of("Asia/Riyadh")).minusMinutes(1);

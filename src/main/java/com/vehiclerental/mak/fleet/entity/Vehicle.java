@@ -1,6 +1,5 @@
 package com.vehiclerental.mak.fleet.entity;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
@@ -47,14 +46,6 @@ public class Vehicle {
     private String transmission;
     @Column(nullable = false)
     private String fuelType;
-    @Column(precision = 12, scale = 2)
-    private BigDecimal hourlyRate;
-    @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal dailyRate;
-    @Column(precision = 12, scale = 2)
-    private BigDecimal monthlyRate;
-    @Column(nullable = false, length = 3)
-    private String rateCurrency;
     @Column(nullable = false)
     private String ownership;
     private String vendor;

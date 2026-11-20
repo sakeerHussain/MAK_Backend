@@ -1,9 +1,7 @@
 package com.vehiclerental.mak.fleet.dto.request;
 
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
-import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -25,10 +23,6 @@ public record VehicleRequest(
         @NotBlank @Pattern(regexp = "Automatic|Manual") String transmission,
         @NotBlank @Pattern(regexp = "Petrol|Diesel|Hybrid|Electric") String fuelType,
         @Size(max = 30) List<@NotBlank @Size(max = 80) String> featureTags,
-        @DecimalMin("0.00") BigDecimal hourlyRate,
-        @NotNull @DecimalMin("0.01") BigDecimal dailyRate,
-        @DecimalMin("0.00") BigDecimal monthlyRate,
-        @NotBlank @Pattern(regexp = "[A-Z]{3}") String rateCurrency,
         @NotBlank @Pattern(regexp = "Owned|Leased|Vendor") String ownership,
         @Size(max = 150) String vendor,
         @NotBlank @Pattern(regexp = "Available|In Use|Under Maintenance|Inactive") String status,

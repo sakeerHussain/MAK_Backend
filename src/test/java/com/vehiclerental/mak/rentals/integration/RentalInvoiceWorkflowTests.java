@@ -50,8 +50,7 @@ class RentalInvoiceWorkflowTests {
         String key = UUID.randomUUID().toString().substring(0, 8);
         v.setRegistration("T-" + key); v.setVehicleId("V-" + key);
         v.setMake("Toyota"); v.setModel("Camry"); v.setYear(2025); v.setType("Sedan");
-        v.setSeats(5); v.setTransmission("Automatic"); v.setFuelType("Petrol");
-        v.setDailyRate(new BigDecimal("200")); v.setRateCurrency("SAR"); v.setOwnership("Owned");
+        v.setSeats(5); v.setTransmission("Automatic"); v.setFuelType("Petrol"); v.setOwnership("Owned");
         v.setListedForBooking(true); v.setStatus("Available");
         v.setOnSite(true); vehicles.saveAndFlush(v); RentalReadyFixture.documents(vehicleFiles,v); return v;
     }

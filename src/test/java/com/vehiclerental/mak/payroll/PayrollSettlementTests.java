@@ -39,7 +39,7 @@ class PayrollSettlementTests {
     Account admin; Employee employee; MockMvc mvc; long payrollId;
     @BeforeEach void setup() {
         admin=account("Admin",null);
-        employee=new Employee();employee.setEmployeeId("PAYSET-"+UUID.randomUUID().toString().substring(0,8));employee.setName("Payroll settlement QA");employee.setPhone("+966500000088");employee.setPhoneKey(UUID.randomUUID().toString());employee.setCategory("Technical");employee.setJobTitle("Driver");employee.setDepartment("Transport");employee.setEmploymentType("Full-time");employee.setStatus("Active");employee.setMonthlySalary(bd("9999"));employees.saveAndFlush(employee);
+        employee=new Employee();employee.setEmployeeId("PAYSET-"+UUID.randomUUID().toString().substring(0,8));employee.setName("Payroll settlement QA");employee.setPhone("+966500000088");employee.setPhoneKey(UUID.randomUUID().toString());employee.setCategory("Technical");employee.setJobTitle("Driver");employee.setDepartment("Transport");employee.setEmploymentType("Full-time");employee.setStatus("Active");employees.saveAndFlush(employee);
         var profile=payroll.saveProfile(null,new ProfileRequest(null,"EMPLOYEE",employee.getId(),"2026-07",bd("800"),bd("800"),"","","","",List.of(new Component("Food",bd("400"),"CASH"),new Component("Profession",bd("300"),"CASH"),new Component("Performance",bd("300"),"CASH"),new Component("Room provided",bd("500"),"BENEFIT")),""),admin.getId());
         payrollId=((Number)payroll.prepare(new DraftRequest("2026-07",List.of(((Number)profile.get("payeeId")).longValue())),admin.getId()).getFirst().get("id")).longValue();
         mvc=MockMvcBuilders.webAppContextSetup(context).apply(springSecurity()).build();

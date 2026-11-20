@@ -135,9 +135,6 @@ public class DriverService {
         d.setCompanyId(trim(r.companyId()));
         d.setJoinedOn(r.joinedOn());
         d.setOfficialNumber(trim(r.officialNumber()));
-        d.setHourlyRate(r.hourlyRate());
-        d.setDailyRate(r.dailyRate());
-        d.setMonthlyRate(r.monthlyRate());
         d.setPassportNumber(trim(r.passportNumber()));
         d.setPassportExpiry(r.passportExpiry());
         d.setContractId(trim(r.contractId()));
@@ -156,7 +153,7 @@ public class DriverService {
         DriverRequest details = new DriverRequest(d.getEmployeeId(), d.getName(), d.getPhone(), d.getEmail(),
                 d.getCategory(), d.getNationality(), d.getDesignation(), d.getIdNumber(), d.getIqamaExpiry(),
                 d.getYearsExperience(), d.getEmploymentType(), d.getVendor(), d.getStatus(), d.getCompanyId(),
-                d.getJoinedOn(), d.getOfficialNumber(), d.getHourlyRate(), d.getDailyRate(), d.getMonthlyRate(),
+                d.getJoinedOn(), d.getOfficialNumber(),
                 d.getPassportNumber(), d.getPassportExpiry(), d.getContractId(), d.getContractExpiry(),
                 d.getLicenceNumber(), d.getLicenceExpiry(), d.getBloodGroup(), d.getInsuranceNumber(),
                 d.getInsuranceExpiry(), d.getEmergencyKsa(), d.getEmergencyHome(), d.getHomeAddress());

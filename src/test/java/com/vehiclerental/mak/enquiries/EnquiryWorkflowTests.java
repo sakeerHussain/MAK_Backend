@@ -47,7 +47,7 @@ class EnquiryWorkflowTests {
   data=rental();data.remove("pickupDate");send("/api/public/rental-enquiries",data,400);
  }
  @Test void rentalDatesAndVehicleSnapshotAreRetainedAndHiddenVehicleIsRejected()throws Exception{
-  var v=new Vehicle();String key=UUID.randomUUID().toString();v.setRegistration(key);v.setVehicleId(key);v.setMake("QA");v.setModel("Bus");v.setYear(2024);v.setType("Bus");v.setSeats(30);v.setTransmission("Manual");v.setFuelType("Diesel");v.setDailyRate(new BigDecimal("100"));v.setRateCurrency("USD");v.setOwnership("Owned");v.setStatus("Available");v.setShowOnPublicSite(true);vehicles.saveAndFlush(v);
+  var v=new Vehicle();String key=UUID.randomUUID().toString();v.setRegistration(key);v.setVehicleId(key);v.setMake("QA");v.setModel("Bus");v.setYear(2024);v.setType("Bus");v.setSeats(30);v.setTransmission("Manual");v.setFuelType("Diesel");v.setOwnership("Owned");v.setStatus("Available");v.setShowOnPublicSite(true);vehicles.saveAndFlush(v);
   var data=rental();data.put("vehicleId",v.getId());send("/api/public/rental-enquiries",data,201);var e=service.get(id(data));assertEquals("QA Bus",e.vehicleName());assertEquals(v.getId(),e.vehicleId());assertEquals("With a driver",e.preference());assertEquals(data.get("pickupDate"),e.pickupDate().toString());
   v.setShowOnPublicSite(false);vehicles.saveAndFlush(v);data.put("submissionId",UUID.randomUUID().toString());send("/api/public/rental-enquiries",data,400);v.setShowOnPublicSite(true);v.setStatus("Inactive");vehicles.saveAndFlush(v);send("/api/public/rental-enquiries",data,400);
  }
