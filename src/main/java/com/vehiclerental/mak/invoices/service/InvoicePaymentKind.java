@@ -5,7 +5,7 @@ import org.springframework.http.HttpStatus;
 
 /** A single interpretation shared by payment authorization and processing. */
 public enum InvoicePaymentKind {
-    PAYMENT("Payment", "invoices.edit"), REFUND("Refund", "payments.refund");
+    PAYMENT("Payment", "payments.record"), REFUND("Refund", "payments.refund");
     private final String value;
     private final String permission;
     InvoicePaymentKind(String value, String permission) { this.value=value; this.permission=permission; }

@@ -20,6 +20,8 @@ public class RoleService {
   for(String p:grants){int dot=p.lastIndexOf('.');String module=p.substring(0,dot);if(RolePolicy.ACTIONS.contains(p.substring(dot+1))&&!p.endsWith(".read")&&!grants.contains(module+".read"))throw bad("View access is required before granting another module action.");}
   if((grants.contains("invoices.issue")||grants.contains("invoices.credit")||grants.contains("billing-profile.write"))&&!grants.contains("invoices.read"))throw bad("Invoice view access is required for financial actions.");
   if(grants.contains("payments.refund")&&!grants.contains("bookings.read")&&!grants.contains("invoices.read"))throw bad("Booking or invoice view access is required for refunds.");
+  if(grants.contains("payments.record")&&!grants.contains("bookings.read")&&!grants.contains("invoices.read"))throw bad("Booking or invoice view access is required for recording payments.");
+  if(grants.contains("pricing.write")&&!grants.contains("pricing.read"))throw bad("Price view access is required before granting price management.");
   if(grants.stream().anyMatch(RolePolicy.PAYROLL_SENSITIVE::contains)&&!grants.contains("payroll.read"))throw bad("Payroll view access is required before granting payroll approval, payment or correction actions.");
   String before=r.getPermissionsJson();r.setName(name);r.setDescription(description);r.setPermissionsJson(json.writeValueAsString(grants));r.setUpdatedAt(Instant.now());if(id==null)r.setCreatedAt(Instant.now());else r.setVersion(r.getVersion()+1);roles.saveAndFlush(r);
   if(id!=null)for(var a:accounts.findByCustomRoleId(id))a.setSessionVersion(a.getSessionVersion()+1);
