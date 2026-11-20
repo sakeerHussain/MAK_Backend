@@ -44,7 +44,7 @@ class DriverServiceTests {
 
     private DriverResponse create() {
         String suffix = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        return drivers.create(request("DRV-" + suffix, "+96650" + String.valueOf(Math.abs(suffix.hashCode())).substring(0, 7)));
+        return drivers.create(request("DRV-" + suffix, "+96650" + String.format("%07d", Math.floorMod(suffix.hashCode(), 10_000_000))));
     }
 
     @Test
@@ -93,7 +93,7 @@ class DriverServiceTests {
     @Test
     void importsValidRowsAndReturnsRowErrors() {
         String suffix = UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-        DriverRequest valid = request("DRV-" + suffix, "+96651" + String.valueOf(Math.abs(suffix.hashCode())).substring(0, 7));
+        DriverRequest valid = request("DRV-" + suffix, "+96651" + String.format("%07d", Math.floorMod(suffix.hashCode(), 10_000_000)));
         DriverRequest duplicate = request("drv-" + suffix, "+966588800001");
         DriverImportResult result = imports.importRows(Arrays.asList(valid, duplicate, null));
         assertEquals(1, result.successful());
